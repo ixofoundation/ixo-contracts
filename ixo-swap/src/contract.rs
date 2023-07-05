@@ -176,11 +176,19 @@ pub fn execute(
             )
         }
         ExecuteMsg::RemoveLiquidity {
-            amounts,
+            input_amounts,
             min_token1,
             min_token2,
             expiration,
-        } => execute_remove_liquidity(deps, info, env, amounts, min_token1, min_token2, expiration),
+        } => execute_remove_liquidity(
+            deps,
+            info,
+            env,
+            input_amounts,
+            min_token1,
+            min_token2,
+            expiration,
+        ),
         ExecuteMsg::Swap {
             input_token,
             input_amounts,
@@ -320,61 +328,58 @@ pub fn execute_add_liquidity(
         &token2.denom,
     )?;
 
-    let lp_tokens = get_lp_tokens(input_token1, max_token2);
+    let lp_tokens = get_lp_tokens(&input_token1, &max_token2);
     let lp_token_supplies =
         get_lp_token_supplies(deps.as_ref(), &token1, &token2, &lp_token_addr, lp_tokens)?;
     let liquidity_amounts =
         get_lp_token_amounts_to_mint(&input_token1, &lp_token_supplies, &token1.reserves)?;
-
-    let token2_amounts = get_token2_amounts_required(
-        &max_token2,
-        &token1_amounts,
-        &lp_token_supply,
-        &token2.reserves,
-        &token1.reserves,
-    )?;
-
     let invalid_liquidity = liquidity_amounts
         .clone()
         .into_iter()
         .enumerate()
-        .find(|(index, amount)| !amount.is_zero() && amount < &min_liquidities[*index]);
+        .find(|(index, token)| token.amount < min_liquidities[*index]);
 
-    if let Some((index, amount)) = invalid_liquidity {
+    if let Some((index, token)) = invalid_liquidity {
         return Err(ContractError::MinLiquidityError {
             min_liquidity: min_liquidities[index],
-            liquidity_available: amount,
+            liquidity_available: token.amount,
         });
     }
 
+    let token2_amounts = get_token2_amounts_required(
+        &input_token1,
+        &max_token2,
+        &lp_token_supplies,
+        &token1.reserves,
+        &token2.reserves,
+    )?;
     let invalid_token2_amount = token2_amounts
         .clone()
         .into_iter()
         .enumerate()
-        .find(|(index, amount)| amount > &max_token2[*index]);
+        .find(|(index, token)| token.amount > max_token2[*index].amount);
 
-    if let Some((index, amount)) = invalid_token2_amount {
+    if let Some((index, token)) = invalid_token2_amount {
         return Err(ContractError::MaxTokenError {
-            max_token: max_token2[index],
-            tokens_required: amount,
+            max_token: max_token2[index].amount,
+            tokens_required: token.amount,
         });
     }
 
     // Generate cw20/cw1155 transfer messages if necessary
     let mut transfer_msgs: Vec<CosmosMsg> = vec![];
-    match token1.denom {
+    match token1.denom.clone() {
         Denom::Cw20(addr) => transfer_msgs.push(get_cw20_transfer_from_msg(
             &info.sender,
             &env.contract.address,
             &addr,
-            *token1_amounts.first().unwrap(),
+            input_token1.first().unwrap().amount,
         )?),
-        Denom::Cw1155(denom) => transfer_msgs.push(get_cw1155_transfer_msg(
+        Denom::Cw1155(addr) => transfer_msgs.push(get_cw1155_transfer_msg(
             &info.sender,
             &env.contract.address,
-            &denom.address,
-            &denom.tokens,
-            &token1_amounts,
+            &addr,
+            &input_token1,
         )?),
         Denom::Native(_) => {}
     }
@@ -384,13 +389,12 @@ pub fn execute_add_liquidity(
             &info.sender,
             &env.contract.address,
             &addr,
-            *token2_amounts.first().unwrap(),
+            token2_amounts.first().unwrap().amount,
         )?),
-        Denom::Cw1155(denom) => transfer_msgs.push(get_cw1155_transfer_msg(
+        Denom::Cw1155(addr) => transfer_msgs.push(get_cw1155_transfer_msg(
             &info.sender,
             &env.contract.address,
-            &denom.address,
-            &denom.tokens,
+            &addr,
             &token2_amounts,
         )?),
         Denom::Native(_) => {}
@@ -398,8 +402,8 @@ pub fn execute_add_liquidity(
 
     // Refund token 2 if is a native token and not all is spent
     if let Denom::Native(ref denom) = token2.denom {
-        let token2_amount = *token2_amounts.first().unwrap();
-        let token2_max_amount = *max_token2.first().unwrap();
+        let token2_amount = token2_amounts.first().unwrap().amount;
+        let token2_max_amount = max_token2.first().unwrap().amount;
 
         if token2_amount < token2_max_amount {
             transfer_msgs.push(get_bank_transfer_to_msg(
@@ -410,25 +414,11 @@ pub fn execute_add_liquidity(
         }
     }
 
-    TOKEN1.update(deps.storage, |mut token1| -> Result<_, ContractError> {
-        token1.reserves = token1
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, amount)| amount.checked_add(token1_amounts[index]).unwrap())
-            .collect::<Vec<Uint128>>();
-
-        Ok(token1)
+    TOKEN1.update(deps.storage, |token1| -> Result<_, ContractError> {
+        increase_token_reserves(token1, &input_token1)
     })?;
-    TOKEN2.update(deps.storage, |mut token2| -> Result<_, ContractError> {
-        token2.reserves = token2
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, amount)| amount.checked_add(token2_amounts[index]).unwrap())
-            .collect::<Vec<Uint128>>();
-
-        Ok(token2)
+    TOKEN2.update(deps.storage, |token2| -> Result<_, ContractError> {
+        increase_token_reserves(token2, &token2_amounts)
     })?;
 
     let mint_msg = mint_lp_tokens(&info.sender, &token1, &liquidity_amounts, &lp_token_addr)?;
@@ -437,7 +427,7 @@ pub fn execute_add_liquidity(
         .add_messages(transfer_msgs)
         .add_message(mint_msg)
         .add_attributes(vec![
-            attr("token1_amount", format!("{:?}", token1_amounts)),
+            attr("token1_amount", format!("{:?}", input_token1)),
             attr("token2_amount", format!("{:?}", token2_amounts)),
             attr("liquidity_received", format!("{:?}", liquidity_amounts)),
         ]))
@@ -451,73 +441,155 @@ fn get_lp_token_amounts_to_mint(
     Ok(liquidity_supplies
         .into_iter()
         .enumerate()
-        .map(|(index, liquidity)| {
+        .map(|(index, ref liquidity)| {
             if liquidity.amount.is_zero() {
-                token1_amounts[index]
+                token1_amounts[index].clone()
             } else {
-                let reserve = token1_reserves
-                    .into_iter()
-                    .find(|reserve| reserve.id.unwrap() == liquidity.id.unwrap());
-                let reserve_amount = if let Some(reserve) = reserve {
-                    reserve.amount
-                } else if let Some(reserve) = token1_reserves.first() {
-                    reserve.amount
-                } else {
-                    Uint128::zero()
-                };
-
-                liquidity.amount = liquidity
+                let liquidity_amount = liquidity
                     .amount
                     .checked_mul(token1_amounts[index].amount)
                     .map_err(StdError::overflow)
                     .unwrap()
-                    .checked_div(reserve_amount)
+                    .checked_div(get_reserve_amount(token1_reserves, liquidity.id.clone()))
                     .map_err(StdError::divide_by_zero)
                     .unwrap();
 
-                *liquidity
+                TokenInfo {
+                    id: liquidity.id.clone(),
+                    amount: liquidity_amount,
+                    uri: liquidity.uri.clone(),
+                }
             }
         })
         .collect())
 }
 
-fn get_token2_amounts_required(
-    max_token: &Vec<Uint128>,
-    token1_amounts: &Vec<Uint128>,
-    liquidity_supplies: &Vec<Uint128>,
-    token2_reserves: &Vec<Uint128>,
-    token1_reserves: &Vec<Uint128>,
-) -> Result<Vec<Uint128>, StdError> {
-    Ok(liquidity_supplies
-        .into_iter()
-        .enumerate()
-        .map(|(index, liquidity)| {
-            if liquidity.is_zero() {
-                get_indexed_value(max_token, liquidity_supplies, index)
-            } else {
-                let amount = get_indexed_value(token1_amounts, liquidity_supplies, index);
+fn increase_token_reserves(
+    mut token: Token,
+    token_amounts: &Vec<TokenInfo>,
+) -> Result<Token, ContractError> {
+    match token.denom {
+        Denom::Cw20(_) | Denom::Native(_) => {
+            if let Some(existing_reserve) = token.reserves.first() {
+                let updated_reserve =
+                    existing_reserve.amount + token_amounts.first().unwrap().amount;
 
-                amount
-                    .checked_mul(get_indexed_value(
-                        token2_reserves,
-                        liquidity_supplies,
-                        index,
-                    ))
-                    .map_err(StdError::overflow)
-                    .unwrap()
-                    .checked_div(get_indexed_value(
-                        token1_reserves,
-                        liquidity_supplies,
-                        index,
-                    ))
-                    .map_err(StdError::divide_by_zero)
-                    .unwrap()
-                    .checked_add(Uint128::new(1))
-                    .map_err(StdError::overflow)
-                    .unwrap()
+                token.reserves = vec![TokenInfo {
+                    id: existing_reserve.id.clone(),
+                    amount: updated_reserve,
+                    uri: existing_reserve.uri.clone(),
+                }];
+            } else {
+                token.reserves.extend(token_amounts.clone());
             }
+        }
+        Denom::Cw1155(_) => {
+            let new_reserves = get_reserves_by_status(token_amounts, token.reserves.clone(), false);
+            let existing_reserves =
+                get_reserves_by_status(token_amounts, token.reserves.clone(), true);
+
+            token.reserves = token
+                .reserves
+                .into_iter()
+                .map(|mut token_reserve| {
+                    if let Some(reserve) = existing_reserves
+                        .to_vec()
+                        .into_iter()
+                        .find(|input_reserve| input_reserve.id == token_reserve.id)
+                    {
+                        token_reserve.amount += reserve.amount;
+                    }
+
+                    token_reserve
+                })
+                .collect();
+            token.reserves.extend(new_reserves);
+        }
+    };
+
+    Ok(token)
+}
+
+fn get_token2_amounts_required(
+    input_token1: &Vec<TokenInfo>,
+    max_token2: &Vec<TokenInfo>,
+    liquidity_supplies: &Vec<TokenInfo>,
+    token1_reserves: &Vec<TokenInfo>,
+    token2_reserves: &Vec<TokenInfo>,
+) -> Result<Vec<TokenInfo>, StdError> {
+    if liquidity_supplies
+        .into_iter()
+        .all(|liquidity| liquidity.amount == Uint128::zero())
+    {
+        Ok(max_token2.to_vec())
+    } else {
+        let token1_total_amount = get_token_total_amount(input_token1);
+        let token1_total_reserve = get_token_total_amount(token1_reserves);
+        let token2_amount = token1_total_amount
+            .checked_mul(get_reserve_amount(token2_reserves, None))
+            .map_err(StdError::overflow)
+            .unwrap()
+            .checked_div(token1_total_reserve)
+            .map_err(StdError::divide_by_zero)
+            .unwrap()
+            .checked_add(Uint128::new(1))
+            .map_err(StdError::overflow)
+            .unwrap();
+
+        Ok(max_token2
+            .to_vec()
+            .into_iter()
+            .map(|mut token| {
+                token.amount = token2_amount;
+                token
+            })
+            .collect())
+    }
+}
+
+fn get_reserves_by_status(
+    token: &Vec<TokenInfo>,
+    reserves: Vec<TokenInfo>,
+    is_exists: bool,
+) -> Vec<TokenInfo> {
+    token
+        .to_vec()
+        .into_iter()
+        .filter(|token| {
+            let reserve = reserves
+                .to_vec()
+                .into_iter()
+                .find(|reserve| reserve.id == token.id);
+
+            reserve.is_some() == is_exists
         })
-        .collect())
+        .collect::<Vec<TokenInfo>>()
+}
+
+fn get_reserve_amount(reserves: &Vec<TokenInfo>, id: Option<String>) -> Uint128 {
+    let indexed_reserve = if let Some(id) = id {
+        reserves
+            .into_iter()
+            .find(|reserve| reserve.id.clone().unwrap() == id)
+    } else {
+        None
+    };
+
+    if let Some(reserve) = indexed_reserve {
+        reserve.amount
+    } else if let Some(reserve) = reserves.first() {
+        reserve.amount
+    } else {
+        Uint128::zero()
+    }
+}
+
+fn get_token_total_amount(token: &Vec<TokenInfo>) -> Uint128 {
+    token
+        .into_iter()
+        .map(|token| token.amount)
+        .reduce(|acc, e| acc + e)
+        .unwrap_or_default()
 }
 
 fn get_indexed_value<T, U>(first_vec: &Vec<T>, second_vec: &Vec<U>, index: usize) -> T
@@ -532,8 +604,8 @@ where
 }
 
 fn get_lp_tokens(
-    token1_info: Vec<TokenInfo>,
-    token2_info: Vec<TokenInfo>,
+    token1_info: &Vec<TokenInfo>,
+    token2_info: &Vec<TokenInfo>,
 ) -> Option<Vec<TokenInfo>> {
     let token1_ids: Vec<TokenInfo> = get_ids_from_tokens_info(token1_info);
     let token2_ids: Vec<TokenInfo> = get_ids_from_tokens_info(token2_info);
@@ -546,8 +618,9 @@ fn get_lp_tokens(
     }
 }
 
-fn get_ids_from_tokens_info(token_info: Vec<TokenInfo>) -> Vec<TokenInfo> {
+fn get_ids_from_tokens_info(token_info: &Vec<TokenInfo>) -> Vec<TokenInfo> {
     token_info
+        .to_vec()
         .into_iter()
         .filter(|info| info.id.is_some())
         .collect()
@@ -560,15 +633,13 @@ fn get_lp_token_supplies(
     lp_token_addr: &Addr,
     lp_tokens: Option<Vec<TokenInfo>>,
 ) -> StdResult<Vec<TokenInfo>> {
-    let lp_token = LP_TOKEN.load(deps.storage)?;
-
     if let Some(lp_token) = LP_TOKEN.load(deps.storage)? {
         match lp_token {
             TokenSelect::Token1 => {
-                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token1.denom)
+                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token1.denom.clone())
             }
             TokenSelect::Token2 => {
-                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token2.denom)
+                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token2.denom.clone())
             }
         }
     } else {
@@ -607,7 +678,11 @@ fn get_token_supply_by_denom(
                 let resp: BatchBalanceResponse = deps.querier.query_wasm_smart(
                     lp_token_addr,
                     &cw1155_lp::Cw1155QueryMsg::BatchBalanceForTokens {
-                        token_ids: lp_tokens.into_iter().map(|info| info.id.unwrap()).collect(),
+                        token_ids: lp_tokens
+                            .to_vec()
+                            .into_iter()
+                            .map(|info| info.id.unwrap())
+                            .collect(),
                     },
                 )?;
 
@@ -635,14 +710,14 @@ fn get_token_supply_by_denom(
 fn mint_lp_tokens(
     recipient: &Addr,
     token: &Token,
-    liquidity_amounts: &Vec<Uint128>,
+    liquidity_amounts: &Vec<TokenInfo>,
     lp_token_address: &Addr,
 ) -> StdResult<CosmosMsg> {
     let mint_execute_msg = match &token.denom {
         Denom::Cw20(_) | Denom::Native(_) => {
             let mint_msg = cw20_base::msg::ExecuteMsg::Mint {
                 recipient: recipient.into(),
-                amount: *liquidity_amounts.first().unwrap(),
+                amount: liquidity_amounts.first().unwrap().amount,
             };
 
             WasmMsg::Execute {
@@ -651,19 +726,16 @@ fn mint_lp_tokens(
                 funds: vec![],
             }
         }
-        Denom::Cw1155(denom) => {
+        Denom::Cw1155(_) => {
             let mint_msg = cw1155_lp::Cw1155ExecuteMsg::BatchMint {
                 to: recipient.into(),
-                batch: denom
-                    .tokens
-                    .clone()
+                batch: liquidity_amounts
                     .into_iter()
-                    .enumerate()
-                    .map(|(index, (id, uri))| {
+                    .map(|token| {
                         (
-                            id,
-                            get_indexed_value(liquidity_amounts, &denom.tokens, index),
-                            uri,
+                            token.id.clone().unwrap(),
+                            token.amount,
+                            token.uri.clone().unwrap(),
                         )
                     })
                     .collect(),
@@ -1096,8 +1168,7 @@ fn get_cw1155_transfer_msg(
     owner: &Addr,
     recipient: &Addr,
     token_addr: &Addr,
-    tokens: &Vec<(String, String)>,
-    token_amounts: &Vec<Uint128>,
+    tokens: &Vec<TokenInfo>,
 ) -> StdResult<CosmosMsg> {
     // create transfer cw1155 msg
     let transfer_cw1155_msg = Cw1155ExecuteMsg::BatchSendFrom {
@@ -1107,7 +1178,7 @@ fn get_cw1155_transfer_msg(
             .to_vec()
             .into_iter()
             .enumerate()
-            .map(|(index, (id, uri))| (id, token_amounts[index], uri))
+            .map(|(index, token)| (token.id.unwrap(), token.amount, token.uri.unwrap()))
             .collect(),
         msg: None,
     };
@@ -1706,7 +1777,9 @@ pub fn query_token1_for_token2_price(
         total_fee_percent,
     )?;
 
-    Ok(Token1ForToken2PriceResponse { token2_amounts })
+    Ok(Token1ForToken2PriceResponse {
+        token2_amounts: vec![],
+    })
 }
 
 pub fn query_token2_for_token1_price(
@@ -1725,7 +1798,9 @@ pub fn query_token2_for_token1_price(
         total_fee_percent,
     )?;
 
-    Ok(Token2ForToken1PriceResponse { token1_amounts })
+    Ok(Token2ForToken1PriceResponse {
+        token1_amounts: vec![],
+    })
 }
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
@@ -1798,43 +1873,135 @@ mod tests {
     #[test]
     fn test_get_liquidity_amount() {
         let liquidity = get_lp_token_amounts_to_mint(
-            &vec![Uint128::new(100)],
-            &vec![Uint128::zero()],
-            &vec![Uint128::zero()],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None,
+            }],
         )
         .unwrap();
-        assert_eq!(liquidity, vec![Uint128::new(100)]);
+        assert_eq!(
+            liquidity,
+            vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }]
+        );
 
         let liquidity = get_lp_token_amounts_to_mint(
-            &vec![Uint128::new(100)],
-            &vec![Uint128::new(50)],
-            &vec![Uint128::new(25)],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(50),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(25),
+                uri: None,
+            }],
         )
         .unwrap();
-        assert_eq!(liquidity, vec![Uint128::new(200)]);
+        assert_eq!(
+            liquidity,
+            vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(200),
+                uri: None,
+            }]
+        );
     }
 
     #[test]
     fn test_get_token_amount() {
         let liquidity = get_token2_amounts_required(
-            &vec![Uint128::new(100)],
-            &vec![Uint128::new(50)],
-            &vec![Uint128::zero()],
-            &vec![Uint128::zero()],
-            &vec![Uint128::zero()],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(50),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None,
+            }],
         )
         .unwrap();
-        assert_eq!(liquidity, vec![Uint128::new(100)]);
+        assert_eq!(
+            liquidity,
+            vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }]
+        );
 
         let liquidity = get_token2_amounts_required(
-            &vec![Uint128::new(200)],
-            &vec![Uint128::new(50)],
-            &vec![Uint128::new(50)],
-            &vec![Uint128::new(100)],
-            &vec![Uint128::new(25)],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(50),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(200),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(50),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(25),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
         )
         .unwrap();
-        assert_eq!(liquidity, vec![Uint128::new(201)]);
+        assert_eq!(
+            liquidity,
+            vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(201),
+                uri: None,
+            }]
+        );
     }
 
     #[test]
