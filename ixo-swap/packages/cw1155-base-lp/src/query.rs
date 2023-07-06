@@ -62,7 +62,7 @@ pub fn batch_balance_for_tokens(
 pub fn batch_balance_for_all(deps: Deps) -> StdResult<BatchBalanceForAllResponse> {
     let balances = SUPPLIES
         .range(deps.storage, None, None, Order::Ascending)
-        .map(|supply| {
+        .map(|supply| -> StdResult<_> {
             supply.map(|(id, amount)| {
                 let uri = TOKENS.load(deps.storage, &id).unwrap();
 

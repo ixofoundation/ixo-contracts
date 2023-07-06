@@ -44,8 +44,8 @@ pub enum ExecuteMsg {
     },
     RemoveLiquidity {
         input_amounts: Vec<Uint128>,
-        min_token1: Vec<Uint128>,
-        min_token2: Vec<Uint128>,
+        min_token1: Vec<TokenInfo>,
+        min_token2: Vec<TokenInfo>,
         expiration: Option<Expiration>,
     },
     Swap {

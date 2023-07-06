@@ -328,7 +328,7 @@ pub fn execute_add_liquidity(
         &token2.denom,
     )?;
 
-    let lp_tokens = get_lp_tokens(&input_token1, &max_token2);
+    let lp_tokens = get_lp_tokens(&input_token1);
     let lp_token_supplies =
         get_lp_token_supplies(deps.as_ref(), &token1, &token2, &lp_token_addr, lp_tokens)?;
     let liquidity_amounts =
@@ -492,10 +492,8 @@ fn increase_token_reserves(
                 .reserves
                 .into_iter()
                 .map(|mut token_reserve| {
-                    if let Some(reserve) = existing_reserves
-                        .to_vec()
-                        .into_iter()
-                        .find(|input_reserve| input_reserve.id == token_reserve.id)
+                    if let Some(reserve) =
+                        get_token_by_id(&existing_reserves, token_reserve.id.clone())
                     {
                         token_reserve.amount += reserve.amount;
                     }
@@ -508,6 +506,10 @@ fn increase_token_reserves(
     };
 
     Ok(token)
+}
+
+fn get_token_by_id(tokens: &Vec<TokenInfo>, id: Option<String>) -> Option<TokenInfo> {
+    tokens.to_vec().into_iter().find(|token| token.id == id)
 }
 
 fn get_token2_amounts_required(
@@ -524,7 +526,11 @@ fn get_token2_amounts_required(
         Ok(max_token2.to_vec())
     } else {
         let token1_total_amount = get_token_total_amount(input_token1);
-        let token1_total_reserve = get_token_total_amount(token1_reserves);
+        let token1_total_reserve = get_token_total_amount(&get_reserves_by_status(
+            token1_reserves,
+            input_token1.to_vec(),
+            true,
+        ));
         let token2_amount = token1_total_amount
             .checked_mul(get_reserve_amount(token2_reserves, None))
             .map_err(StdError::overflow)
@@ -556,10 +562,7 @@ fn get_reserves_by_status(
         .to_vec()
         .into_iter()
         .filter(|token| {
-            let reserve = reserves
-                .to_vec()
-                .into_iter()
-                .find(|reserve| reserve.id == token.id);
+            let reserve = get_token_by_id(&reserves, token.id.clone());
 
             reserve.is_some() == is_exists
         })
@@ -567,10 +570,8 @@ fn get_reserves_by_status(
 }
 
 fn get_reserve_amount(reserves: &Vec<TokenInfo>, id: Option<String>) -> Uint128 {
-    let indexed_reserve = if let Some(id) = id {
-        reserves
-            .into_iter()
-            .find(|reserve| reserve.id.clone().unwrap() == id)
+    let indexed_reserve = if id.is_some() {
+        get_token_by_id(reserves, id)
     } else {
         None
     };
@@ -603,27 +604,18 @@ where
     }
 }
 
-fn get_lp_tokens(
-    token1_info: &Vec<TokenInfo>,
-    token2_info: &Vec<TokenInfo>,
-) -> Option<Vec<TokenInfo>> {
-    let token1_ids: Vec<TokenInfo> = get_ids_from_tokens_info(token1_info);
-    let token2_ids: Vec<TokenInfo> = get_ids_from_tokens_info(token2_info);
-    let lp_tokens = [token1_ids, token2_ids].concat();
+fn get_lp_tokens(tokens_info: &Vec<TokenInfo>) -> Option<Vec<TokenInfo>> {
+    let lp_tokens: Vec<TokenInfo> = tokens_info
+        .to_vec()
+        .into_iter()
+        .filter(|info| info.id.is_some())
+        .collect();
 
     if lp_tokens.len() != 0 {
         Some(lp_tokens)
     } else {
         None
     }
-}
-
-fn get_ids_from_tokens_info(token_info: &Vec<TokenInfo>) -> Vec<TokenInfo> {
-    token_info
-        .to_vec()
-        .into_iter()
-        .filter(|info| info.id.is_some())
-        .collect()
 }
 
 fn get_lp_token_supplies(
@@ -636,75 +628,75 @@ fn get_lp_token_supplies(
     if let Some(lp_token) = LP_TOKEN.load(deps.storage)? {
         match lp_token {
             TokenSelect::Token1 => {
-                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token1.denom.clone())
+                get_token_supply_by_denom(deps, token1.denom.clone(), lp_token_addr, lp_tokens)
             }
             TokenSelect::Token2 => {
-                get_token_supply_by_denom(deps, lp_token_addr, lp_tokens, token2.denom.clone())
+                get_token_supply_by_denom(deps, token2.denom.clone(), lp_token_addr, lp_tokens)
             }
         }
     } else {
-        let resp: cw20::TokenInfoResponse = deps
-            .querier
-            .query_wasm_smart(lp_token_addr, &cw20_base::msg::QueryMsg::TokenInfo {})?;
-
-        Ok(vec![TokenInfo {
-            id: None,
-            amount: resp.total_supply,
-            uri: None,
-        }])
+        get_cw20_token_supply(deps, lp_token_addr)
     }
 }
 
 fn get_token_supply_by_denom(
     deps: Deps,
+    denom: Denom,
     lp_token_addr: &Addr,
     lp_tokens: Option<Vec<TokenInfo>>,
-    denom: Denom,
 ) -> StdResult<Vec<TokenInfo>> {
     match denom {
-        Denom::Cw20(_) | Denom::Native(_) => {
-            let resp: cw20::TokenInfoResponse = deps
-                .querier
-                .query_wasm_smart(lp_token_addr, &cw20_base::msg::QueryMsg::TokenInfo {})?;
-
-            Ok(vec![TokenInfo {
-                id: None,
-                amount: resp.total_supply,
-                uri: None,
-            }])
-        }
-        Denom::Cw1155(_) => {
-            if let Some(lp_tokens) = lp_tokens {
-                let resp: BatchBalanceResponse = deps.querier.query_wasm_smart(
-                    lp_token_addr,
-                    &cw1155_lp::Cw1155QueryMsg::BatchBalanceForTokens {
-                        token_ids: lp_tokens
-                            .to_vec()
-                            .into_iter()
-                            .map(|info| info.id.unwrap())
-                            .collect(),
-                    },
-                )?;
-
-                Ok(lp_tokens
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, info)| TokenInfo {
-                        id: info.id,
-                        amount: resp.balances[index],
-                        uri: info.uri,
-                    })
-                    .collect())
-            } else {
-                let resp: BatchBalanceForAllResponse = deps.querier.query_wasm_smart(
-                    lp_token_addr,
-                    &cw1155_lp::Cw1155QueryMsg::BatchBalanceForAll {},
-                )?;
-
-                Ok(resp.balances)
-            }
-        }
+        Denom::Cw20(_) | Denom::Native(_) => get_cw20_token_supply(deps, lp_token_addr),
+        Denom::Cw1155(_) => get_cw1155_token_supply(deps, lp_token_addr, lp_tokens),
     }
+}
+
+fn get_cw1155_token_supply(
+    deps: Deps,
+    lp_token_addr: &Addr,
+    lp_tokens: Option<Vec<TokenInfo>>,
+) -> StdResult<Vec<TokenInfo>> {
+    if let Some(lp_tokens) = lp_tokens {
+        let resp: BatchBalanceResponse = deps.querier.query_wasm_smart(
+            lp_token_addr,
+            &cw1155_lp::Cw1155QueryMsg::BatchBalanceForTokens {
+                token_ids: lp_tokens
+                    .to_vec()
+                    .into_iter()
+                    .map(|token| token.id.unwrap())
+                    .collect(),
+            },
+        )?;
+
+        Ok(lp_tokens
+            .into_iter()
+            .enumerate()
+            .map(|(index, token)| TokenInfo {
+                id: token.id,
+                amount: resp.balances[index],
+                uri: token.uri,
+            })
+            .collect())
+    } else {
+        let resp: BatchBalanceForAllResponse = deps.querier.query_wasm_smart(
+            lp_token_addr,
+            &cw1155_lp::Cw1155QueryMsg::BatchBalanceForAll {},
+        )?;
+
+        Ok(resp.balances)
+    }
+}
+
+fn get_cw20_token_supply(deps: Deps, lp_token_addr: &Addr) -> StdResult<Vec<TokenInfo>> {
+    let resp: cw20::TokenInfoResponse = deps
+        .querier
+        .query_wasm_smart(lp_token_addr, &cw20_base::msg::QueryMsg::TokenInfo {})?;
+
+    Ok(vec![TokenInfo {
+        id: None,
+        amount: resp.total_supply,
+        uri: None,
+    }])
 }
 
 fn mint_lp_tokens(
@@ -713,21 +705,21 @@ fn mint_lp_tokens(
     liquidity_amounts: &Vec<TokenInfo>,
     lp_token_address: &Addr,
 ) -> StdResult<CosmosMsg> {
-    let mint_execute_msg = match &token.denom {
+    let mint_msg = match &token.denom {
         Denom::Cw20(_) | Denom::Native(_) => {
-            let mint_msg = cw20_base::msg::ExecuteMsg::Mint {
+            let mint_execute_msg = cw20_base::msg::ExecuteMsg::Mint {
                 recipient: recipient.into(),
                 amount: liquidity_amounts.first().unwrap().amount,
             };
 
             WasmMsg::Execute {
                 contract_addr: lp_token_address.to_string(),
-                msg: to_binary(&mint_msg)?,
+                msg: to_binary(&mint_execute_msg)?,
                 funds: vec![],
             }
         }
         Denom::Cw1155(_) => {
-            let mint_msg = cw1155_lp::Cw1155ExecuteMsg::BatchMint {
+            let mint_execute_msg = cw1155_lp::Cw1155ExecuteMsg::BatchMint {
                 to: recipient.into(),
                 batch: liquidity_amounts
                     .into_iter()
@@ -744,52 +736,106 @@ fn mint_lp_tokens(
 
             WasmMsg::Execute {
                 contract_addr: lp_token_address.to_string(),
-                msg: to_binary(&mint_msg)?,
+                msg: to_binary(&mint_execute_msg)?,
                 funds: vec![],
             }
         }
     };
 
-    Ok(mint_execute_msg.into())
+    Ok(mint_msg.into())
 }
 
-fn get_token_balances(
+fn get_lp_token_balances(
     deps: Deps,
     token1: &Token,
     token2: &Token,
-    contract: &Addr,
     addr: &Addr,
-) -> StdResult<Vec<Uint128>> {
-    let mut denom = token1.denom.clone();
-
-    match &token2.denom {
-        Denom::Cw20(_) => denom = token2.denom.clone(),
-        Denom::Cw1155(_) => denom = token2.denom.clone(),
-        Denom::Native(_) => {}
+    lp_token_addr: &Addr,
+    lp_tokens: &Option<Vec<TokenInfo>>,
+) -> StdResult<Vec<TokenInfo>> {
+    if let Some(lp_token) = LP_TOKEN.load(deps.storage)? {
+        match lp_token {
+            TokenSelect::Token1 => get_lp_token_balance_by_denom(
+                deps,
+                token1.denom.clone(),
+                addr,
+                lp_token_addr,
+                lp_tokens,
+            ),
+            TokenSelect::Token2 => get_lp_token_balance_by_denom(
+                deps,
+                token2.denom.clone(),
+                addr,
+                lp_token_addr,
+                lp_tokens,
+            ),
+        }
+    } else {
+        get_cw20_token_balance(deps, addr, lp_token_addr)
     }
+}
 
+fn get_lp_token_balance_by_denom(
+    deps: Deps,
+    denom: Denom,
+    addr: &Addr,
+    lp_token_addr: &Addr,
+    lp_tokens: &Option<Vec<TokenInfo>>,
+) -> StdResult<Vec<TokenInfo>> {
     match denom {
-        Denom::Cw20(_) | Denom::Native(_) => {
-            let resp: cw20::BalanceResponse = deps.querier.query_wasm_smart(
-                contract,
-                &cw20_base::msg::QueryMsg::Balance {
-                    address: addr.to_string(),
-                },
-            )?;
-            Ok(vec![resp.balance])
-        }
-        Denom::Cw1155(denom) => {
-            let resp: BatchBalanceResponse = deps.querier.query_wasm_smart(
-                contract,
-                &Cw1155QueryMsg::BatchBalance {
-                    owner: addr.to_string(),
-                    token_ids: denom.tokens.into_iter().map(|(id, _)| id).collect(),
-                },
-            )?;
-
-            Ok(resp.balances)
+        Denom::Cw20(_) | Denom::Native(_) => get_cw20_token_balance(deps, addr, lp_token_addr),
+        Denom::Cw1155(_) => {
+            get_cw1155_token_balance(deps, addr, lp_token_addr, lp_tokens.clone().unwrap())
         }
     }
+}
+
+fn get_cw20_token_balance(
+    deps: Deps,
+    addr: &Addr,
+    lp_token_addr: &Addr,
+) -> StdResult<Vec<TokenInfo>> {
+    let resp: cw20::BalanceResponse = deps.querier.query_wasm_smart(
+        lp_token_addr,
+        &cw20_base::msg::QueryMsg::Balance {
+            address: addr.to_string(),
+        },
+    )?;
+
+    Ok(vec![TokenInfo {
+        id: None,
+        amount: resp.balance,
+        uri: None,
+    }])
+}
+
+fn get_cw1155_token_balance(
+    deps: Deps,
+    addr: &Addr,
+    lp_token_addr: &Addr,
+    lp_tokens: Vec<TokenInfo>,
+) -> StdResult<Vec<TokenInfo>> {
+    let resp: BatchBalanceResponse = deps.querier.query_wasm_smart(
+        lp_token_addr,
+        &cw1155_lp::Cw1155QueryMsg::BatchBalance {
+            owner: addr.to_string(),
+            token_ids: lp_tokens
+                .to_vec()
+                .into_iter()
+                .map(|token| token.id.unwrap())
+                .collect(),
+        },
+    )?;
+
+    Ok(lp_tokens
+        .into_iter()
+        .enumerate()
+        .map(|(index, token)| TokenInfo {
+            id: token.id,
+            amount: resp.balances[index],
+            uri: token.uri,
+        })
+        .collect())
 }
 
 fn validate_input_amount(
@@ -906,9 +952,9 @@ pub fn execute_remove_liquidity(
     deps: DepsMut,
     info: MessageInfo,
     env: Env,
-    amounts: Vec<Uint128>,
-    min_token1: Vec<Uint128>,
-    min_token2: Vec<Uint128>,
+    input_amounts: Vec<Uint128>,
+    min_token1: Vec<TokenInfo>,
+    min_token2: Vec<TokenInfo>,
     expiration: Option<Expiration>,
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &env.block)?;
@@ -916,149 +962,125 @@ pub fn execute_remove_liquidity(
     let lp_token_addr = LP_TOKEN_ADDRESS.load(deps.storage)?;
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
-    let balances = get_token_balances(
+    let lp_tokens = get_lp_tokens(&min_token1);
+    let lp_token_balances = get_lp_token_balances(
         deps.as_ref(),
         &token1,
         &token2,
-        &lp_token_addr,
         &info.sender,
+        &lp_token_addr,
+        &lp_tokens,
     )?;
-    let lp_token_supplies = get_lp_token_supplies(deps.as_ref(), &token1, &token2, &lp_token_addr)?;
+    let lp_token_supplies =
+        get_lp_token_supplies(deps.as_ref(), &token1, &token2, &lp_token_addr, lp_tokens)?;
 
-    let insufficient_amount = amounts
+    let insufficient_amount = input_amounts
         .clone()
         .into_iter()
         .enumerate()
-        .find(|(index, amount)| amount > &balances[*index]);
+        .find(|(index, amount)| amount > &lp_token_balances[*index].amount);
 
     if let Some((index, amount)) = insufficient_amount {
         return Err(ContractError::InsufficientLiquidityError {
             requested: amount,
-            available: balances[index],
+            available: lp_token_balances[index].amount,
         });
     }
 
-    let token1_amounts = amounts
-        .clone()
+    let token1_amounts = lp_token_supplies
+        .to_vec()
         .into_iter()
         .enumerate()
-        .map(|(index, amount)| {
-            amount
-                .checked_mul(token1.reserves[index])
+        .map(|(index, mut token)| {
+            let reserve_amount = get_reserve_amount(&token1.reserves, token.id.clone());
+            let input_amount = input_amounts[index];
+            let total_amount = input_amount
+                .checked_mul(reserve_amount)
                 .map_err(StdError::overflow)
                 .unwrap()
-                .checked_div(lp_token_supplies[index])
+                .checked_div(token.amount)
                 .map_err(StdError::divide_by_zero)
-                .unwrap()
+                .unwrap();
+
+            token.amount = total_amount;
+            token
         })
-        .collect::<Vec<Uint128>>();
+        .collect::<Vec<TokenInfo>>();
 
     let invalid_min_token1 = token1_amounts
-        .clone()
+        .to_vec()
         .into_iter()
         .enumerate()
-        .find(|(index, amount)| amount < &min_token1[*index]);
+        .find(|(index, token)| token.amount < min_token1[*index].amount);
 
     if let Some((index, token1_amount)) = invalid_min_token1 {
         return Err(ContractError::MinToken1Error {
-            requested: min_token1[index],
-            available: token1_amount,
+            requested: min_token1[index].amount,
+            available: token1_amount.amount,
         });
     }
 
-    let token2_amounts = amounts
-        .clone()
+    let total_input_amount = input_amounts
+        .to_vec()
         .into_iter()
-        .enumerate()
-        .map(|(index, amount)| {
-            amount
-                .checked_mul(token2.reserves[index])
-                .map_err(StdError::overflow)
-                .unwrap()
-                .checked_div(lp_token_supplies[index])
-                .map_err(StdError::divide_by_zero)
-                .unwrap()
-        })
-        .collect::<Vec<Uint128>>();
+        .reduce(|acc, e| acc.checked_add(e).map_err(StdError::overflow).unwrap())
+        .unwrap();
+    let total_liquidity_supply = get_token_total_amount(&lp_token_supplies);
+    let token2_amounts = vec![TokenInfo {
+        id: None,
+        amount: total_input_amount
+            .checked_mul(get_reserve_amount(&token2.reserves, None))
+            .map_err(StdError::overflow)
+            .unwrap()
+            .checked_div(total_liquidity_supply)
+            .map_err(StdError::divide_by_zero)
+            .unwrap(),
+        uri: None,
+    }];
 
     let invalid_min_token2 = token2_amounts
         .clone()
         .into_iter()
         .enumerate()
-        .find(|(index, amount)| amount < &min_token2[*index]);
+        .find(|(index, token)| token.amount < min_token2[*index].amount);
 
     if let Some((index, token2_amount)) = invalid_min_token2 {
         return Err(ContractError::MinToken2Error {
-            requested: min_token2[index],
-            available: token2_amount,
+            requested: min_token2[index].amount,
+            available: token2_amount.amount,
         });
     }
 
-    TOKEN1.update(deps.storage, |mut token1| -> Result<_, ContractError> {
-        token1.reserves = token1
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, reserve)| {
-                reserve
-                    .checked_sub(token1_amounts[index])
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect();
-
-        Ok(token1)
+    TOKEN1.update(deps.storage, |token1| -> Result<_, ContractError> {
+        decrease_token_reserves(token1, &token1_amounts)
     })?;
 
-    TOKEN2.update(deps.storage, |mut token2| -> Result<_, ContractError> {
-        token2.reserves = token2
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, reserve)| {
-                reserve
-                    .checked_sub(token2_amounts[index])
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect();
-
-        Ok(token2)
+    TOKEN2.update(deps.storage, |token2| -> Result<_, ContractError> {
+        decrease_token_reserves(token2, &token2_amounts)
     })?;
 
-    let token1_transfer_msg = match token1.denom.clone() {
-        Denom::Cw20(addr) => {
-            get_cw20_transfer_to_msg(&info.sender, &addr, *token1_amounts.first().unwrap())?
-        }
-        Denom::Cw1155(denom) => get_cw1155_transfer_msg(
-            &env.contract.address,
-            &info.sender,
-            &denom.address,
-            &denom.tokens,
-            &token1_amounts,
-        )?,
-        Denom::Native(denom) => {
-            get_bank_transfer_to_msg(&info.sender, &denom, *token1_amounts.first().unwrap())
-        }
-    };
-    let token2_transfer_msg = match token2.denom.clone() {
-        Denom::Cw20(addr) => {
-            get_cw20_transfer_to_msg(&info.sender, &addr, *token2_amounts.first().unwrap())?
-        }
-        Denom::Cw1155(denom) => get_cw1155_transfer_msg(
-            &env.contract.address,
-            &info.sender,
-            &denom.address,
-            &denom.tokens,
-            &token2_amounts,
-        )?,
-        Denom::Native(denom) => {
-            get_bank_transfer_to_msg(&info.sender, &denom, *token2_amounts.first().unwrap())
-        }
-    };
+    let token1_transfer_msg = get_transfer_msg_by_denom(
+        &token1.denom,
+        &info.sender,
+        &env.contract.address,
+        &token1_amounts,
+    )?;
+    let token2_transfer_msg = get_transfer_msg_by_denom(
+        &token2.denom,
+        &info.sender,
+        &env.contract.address,
+        &token2_amounts,
+    )?;
 
-    let lp_token = get_lp_token(deps, token1, token2);
-    let lp_token_burn_msg = get_burn_msg(&lp_token_addr, &info.sender, &amounts, lp_token)?;
+    let burn_amounts = min_token1
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut token)| {
+            token.amount = input_amounts[index];
+            token
+        })
+        .collect();
+    let lp_token_burn_msg = get_burn_msg(&token1, &lp_token_addr, &info.sender, &burn_amounts)?;
 
     Ok(Response::new()
         .add_messages(vec![
@@ -1067,92 +1089,129 @@ pub fn execute_remove_liquidity(
             lp_token_burn_msg,
         ])
         .add_attributes(vec![
-            attr("liquidity_burned", format!("{:?}", amounts)),
+            attr("liquidity_burned", format!("{:?}", input_amounts)),
             attr("token1_returned", format!("{:?}", token1_amounts)),
             attr("token2_returned", format!("{:?}", token2_amounts)),
         ]))
 }
 
-fn get_lp_token(deps: DepsMut, token1: Token, token2: Token) -> Option<Token> {
-    if let Some(lp_token) = LP_TOKEN.load(deps.storage).unwrap() {
-        match lp_token {
-            TokenSelect::Token1 {} => Some(token1),
-            TokenSelect::Token2 {} => Some(token2),
+fn get_transfer_msg_by_denom(
+    denom: &Denom,
+    recipient: &Addr,
+    contract_addr: &Addr,
+    token_amounts: &Vec<TokenInfo>,
+) -> StdResult<CosmosMsg> {
+    match denom {
+        Denom::Cw20(addr) => {
+            get_cw20_transfer_to_msg(recipient, &addr, token_amounts.first().unwrap().amount)
         }
-    } else {
-        None
+        Denom::Cw1155(addr) => {
+            get_cw1155_transfer_msg(contract_addr, recipient, &addr, token_amounts)
+        }
+        Denom::Native(denom) => Ok(get_bank_transfer_to_msg(
+            recipient,
+            &denom,
+            token_amounts.first().unwrap().amount,
+        )),
     }
+}
+
+fn decrease_token_reserves(
+    mut token: Token,
+    token_amounts: &Vec<TokenInfo>,
+) -> Result<Token, ContractError> {
+    match token.denom {
+        Denom::Cw20(_) | Denom::Native(_) => {
+            let existing_reserve = token.reserves.first().unwrap();
+            let decrease_amount = token_amounts.first().unwrap().amount;
+            let updated_reserve_amount = existing_reserve
+                .amount
+                .checked_sub(decrease_amount)
+                .map_err(StdError::overflow)?;
+
+            token.reserves = vec![TokenInfo {
+                id: existing_reserve.id.clone(),
+                amount: updated_reserve_amount,
+                uri: existing_reserve.uri.clone(),
+            }]
+        }
+        Denom::Cw1155(_) => {
+            token.reserves = token
+                .reserves
+                .into_iter()
+                .map(|mut reserve| {
+                    if let Some(decrease_token) = get_token_by_id(token_amounts, reserve.id.clone())
+                    {
+                        reserve.amount = reserve
+                            .amount
+                            .checked_sub(decrease_token.amount)
+                            .map_err(StdError::overflow)
+                            .unwrap();
+                    }
+
+                    reserve
+                })
+                .collect();
+        }
+    }
+
+    Ok(token)
 }
 
 fn get_burn_msg(
+    token: &Token,
     contract: &Addr,
     owner: &Addr,
-    amounts: &Vec<Uint128>,
-    token: Option<Token>,
+    burn_amounts: &Vec<TokenInfo>,
 ) -> StdResult<CosmosMsg> {
-    if token.is_none() {
-        get_cw20_burn_msg(contract, owner, amounts)
-    } else {
-        let token = token.unwrap();
+    let burn_msg = match token.denom {
+        Denom::Cw20(_) | Denom::Native(_) => {
+            let burn_execute_msg = cw20_base::msg::ExecuteMsg::BurnFrom {
+                owner: owner.to_string(),
+                amount: burn_amounts.first().unwrap().amount,
+            };
 
-        match token.denom {
-            Denom::Cw1155(denom) => get_cw1155_burn_msg(denom, contract, owner, amounts),
-            _ => get_cw20_burn_msg(contract, owner, amounts),
+            WasmMsg::Execute {
+                contract_addr: contract.to_string(),
+                msg: to_binary(&burn_execute_msg)?,
+                funds: vec![],
+            }
         }
-    }
-}
+        Denom::Cw1155(_) => {
+            let burn_execute_msg = cw1155_lp::Cw1155ExecuteMsg::BatchBurn {
+                from: owner.to_string(),
+                batch: burn_amounts
+                    .into_iter()
+                    .map(|token| {
+                        (
+                            token.id.clone().unwrap(),
+                            token.amount,
+                            token.uri.clone().unwrap(),
+                        )
+                    })
+                    .collect(),
+            };
 
-fn get_cw1155_burn_msg(
-    denom: Cw1155Denom,
-    contract: &Addr,
-    owner: &Addr,
-    amounts: &Vec<Uint128>,
-) -> StdResult<CosmosMsg> {
-    let msg = cw1155_lp::Cw1155ExecuteMsg::BatchBurn {
-        from: owner.to_string(),
-        batch: denom
-            .tokens
-            .into_iter()
-            .enumerate()
-            .map(|(index, (id, uri))| (id, amounts[index], uri))
-            .collect(),
+            WasmMsg::Execute {
+                contract_addr: contract.to_string(),
+                msg: to_binary(&burn_execute_msg)?,
+                funds: vec![],
+            }
+        }
     };
 
-    Ok(WasmMsg::Execute {
-        contract_addr: contract.to_string(),
-        msg: to_binary(&msg)?,
-        funds: vec![],
-    }
-    .into())
-}
-
-fn get_cw20_burn_msg(
-    contract: &Addr,
-    owner: &Addr,
-    amounts: &Vec<Uint128>,
-) -> StdResult<CosmosMsg> {
-    let msg = cw20_base::msg::ExecuteMsg::BurnFrom {
-        owner: owner.to_string(),
-        amount: *amounts.first().unwrap(),
-    };
-
-    Ok(WasmMsg::Execute {
-        contract_addr: contract.to_string(),
-        msg: to_binary(&msg)?,
-        funds: vec![],
-    }
-    .into())
+    Ok(burn_msg.into())
 }
 
 fn get_cw20_transfer_to_msg(
     recipient: &Addr,
     token_addr: &Addr,
-    token_amount: Uint128,
+    amount: Uint128,
 ) -> StdResult<CosmosMsg> {
     // create transfer cw20 msg
     let transfer_cw20_msg = Cw20ExecuteMsg::Transfer {
         recipient: recipient.into(),
-        amount: token_amount,
+        amount,
     };
     let exec_cw20_transfer = WasmMsg::Execute {
         contract_addr: token_addr.into(),
@@ -1177,8 +1236,7 @@ fn get_cw1155_transfer_msg(
         batch: tokens
             .to_vec()
             .into_iter()
-            .enumerate()
-            .map(|(index, token)| (token.id.unwrap(), token.amount, token.uri.unwrap()))
+            .map(|token| (token.id.unwrap(), token.amount, token.uri.unwrap()))
             .collect(),
         msg: None,
     };
@@ -1192,12 +1250,12 @@ fn get_cw1155_transfer_msg(
     Ok(cw1155_transfer_cosmos_msg)
 }
 
-fn get_bank_transfer_to_msg(recipient: &Addr, denom: &str, native_amount: Uint128) -> CosmosMsg {
+fn get_bank_transfer_to_msg(recipient: &Addr, denom: &str, amount: Uint128) -> CosmosMsg {
     let transfer_bank_msg = cosmwasm_std::BankMsg::Send {
         to_address: recipient.into(),
         amount: vec![Coin {
             denom: denom.to_string(),
-            amount: native_amount,
+            amount,
         }],
     };
 
@@ -1777,9 +1835,7 @@ pub fn query_token1_for_token2_price(
         total_fee_percent,
     )?;
 
-    Ok(Token1ForToken2PriceResponse {
-        token2_amounts: vec![],
-    })
+    Ok(Token1ForToken2PriceResponse { token2_amounts })
 }
 
 pub fn query_token2_for_token1_price(
@@ -1798,9 +1854,7 @@ pub fn query_token2_for_token1_price(
         total_fee_percent,
     )?;
 
-    Ok(Token2ForToken1PriceResponse {
-        token1_amounts: vec![],
-    })
+    Ok(Token2ForToken1PriceResponse { token1_amounts })
 }
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
