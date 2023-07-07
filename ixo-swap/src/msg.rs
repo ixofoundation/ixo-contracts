@@ -49,9 +49,9 @@ pub enum ExecuteMsg {
         expiration: Option<Expiration>,
     },
     Swap {
-        input_token: TokenSelect,
-        input_amounts: Vec<Uint128>,
-        min_outputs: Vec<Uint128>,
+        input_token_select: TokenSelect,
+        input_tokens: Vec<TokenInfo>,
+        min_output_amounts: Vec<Uint128>,
         expiration: Option<Expiration>,
     },
     /// Chained swap converting A -> B and B -> C by leveraging two swap contracts
@@ -63,10 +63,10 @@ pub enum ExecuteMsg {
         expiration: Option<Expiration>,
     },
     SwapAndSendTo {
-        input_token: TokenSelect,
-        input_amounts: Vec<Uint128>,
+        input_token_select: TokenSelect,
+        input_tokens: Vec<TokenInfo>,
+        min_output_amounts: Vec<Uint128>,
         recipient: String,
-        min_tokens: Vec<Uint128>,
         expiration: Option<Expiration>,
     },
     UpdateConfig {
@@ -81,7 +81,7 @@ pub enum ExecuteMsg {
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
     /// Implements CW20. Returns the current balance of the given address, 0 if unset.
@@ -90,10 +90,10 @@ pub enum QueryMsg {
     },
     Info {},
     Token1ForToken2Price {
-        token1_amounts: Vec<Uint128>,
+        token1_amounts: Vec<TokenInfo>,
     },
     Token2ForToken1Price {
-        token2_amounts: Vec<Uint128>,
+        token2_amounts: Vec<TokenInfo>,
     },
     Fee {},
     Token {
@@ -142,12 +142,12 @@ pub struct FeeResponse {
     pub protocol_fee_recipient: String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Token1ForToken2PriceResponse {
-    pub token2_amounts: Vec<Uint128>,
+    pub token2_amounts: Vec<TokenInfo>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Token2ForToken1PriceResponse {
-    pub token1_amounts: Vec<Uint128>,
+    pub token1_amounts: Vec<TokenInfo>,
 }

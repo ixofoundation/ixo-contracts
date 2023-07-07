@@ -4,7 +4,7 @@ use cosmwasm_std::{
     Response, StdError, StdResult, SubMsg, SystemResult, Uint128, Uint256, Uint512, WasmMsg,
 };
 use cw0::parse_reply_instantiate_data;
-use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg};
+use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg};
 use cw1155_lp::{BatchBalanceForAllResponse, TokenInfo};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
@@ -190,9 +190,9 @@ pub fn execute(
             expiration,
         ),
         ExecuteMsg::Swap {
-            input_token,
-            input_amounts,
-            min_outputs,
+            input_token_select,
+            input_tokens,
+            min_output_amounts,
             expiration,
             ..
         } => {
@@ -202,11 +202,11 @@ pub fn execute(
             execute_swap(
                 deps,
                 &info,
-                input_amounts,
                 env,
-                input_token,
+                input_token_select,
+                input_tokens,
+                min_output_amounts,
                 info.sender.to_string(),
-                min_outputs,
                 expiration,
             )
         }
@@ -232,10 +232,10 @@ pub fn execute(
             )
         }
         ExecuteMsg::SwapAndSendTo {
-            input_token,
-            input_amounts,
+            input_token_select,
+            input_tokens,
+            min_output_amounts,
             recipient,
-            min_tokens,
             expiration,
         } => {
             if FROZEN.load(deps.storage)? {
@@ -244,11 +244,11 @@ pub fn execute(
             execute_swap(
                 deps,
                 &info,
-                input_amounts,
                 env,
-                input_token,
+                input_token_select,
+                input_tokens,
+                min_output_amounts,
                 recipient,
-                min_tokens,
                 expiration,
             )
         }
@@ -368,37 +368,18 @@ pub fn execute_add_liquidity(
 
     // Generate cw20/cw1155 transfer messages if necessary
     let mut transfer_msgs: Vec<CosmosMsg> = vec![];
-    match token1.denom.clone() {
-        Denom::Cw20(addr) => transfer_msgs.push(get_cw20_transfer_from_msg(
-            &info.sender,
-            &env.contract.address,
-            &addr,
-            input_token1.first().unwrap().amount,
-        )?),
-        Denom::Cw1155(addr) => transfer_msgs.push(get_cw1155_transfer_msg(
-            &info.sender,
-            &env.contract.address,
-            &addr,
-            &input_token1,
-        )?),
-        Denom::Native(_) => {}
-    }
-
-    match token2.denom.clone() {
-        Denom::Cw20(addr) => transfer_msgs.push(get_cw20_transfer_from_msg(
-            &info.sender,
-            &env.contract.address,
-            &addr,
-            token2_amounts.first().unwrap().amount,
-        )?),
-        Denom::Cw1155(addr) => transfer_msgs.push(get_cw1155_transfer_msg(
-            &info.sender,
-            &env.contract.address,
-            &addr,
-            &token2_amounts,
-        )?),
-        Denom::Native(_) => {}
-    }
+    transfer_msgs.extend(get_transfer_from_msg_by_denom(
+        &token1.denom,
+        &info.sender,
+        &env.contract.address,
+        &input_token1,
+    )?);
+    transfer_msgs.extend(get_transfer_from_msg_by_denom(
+        &token2.denom,
+        &info.sender,
+        &env.contract.address,
+        &token2_amounts,
+    )?);
 
     // Refund token 2 if is a native token and not all is spent
     if let Denom::Native(ref denom) = token2.denom {
@@ -431,6 +412,29 @@ pub fn execute_add_liquidity(
             attr("token2_amount", format!("{:?}", token2_amounts)),
             attr("liquidity_received", format!("{:?}", liquidity_amounts)),
         ]))
+}
+
+fn get_transfer_from_msg_by_denom(
+    denom: &Denom,
+    owner: &Addr,
+    recipient: &Addr,
+    tokens: &Vec<TokenInfo>,
+) -> StdResult<Vec<CosmosMsg>> {
+    let mut msgs = vec![];
+    match denom.clone() {
+        Denom::Cw20(addr) => msgs.push(get_cw20_transfer_from_msg(
+            owner,
+            recipient,
+            &addr,
+            tokens.first().unwrap().amount,
+        )?),
+        Denom::Cw1155(addr) => {
+            msgs.push(get_cw1155_transfer_msg(owner, recipient, &addr, &tokens)?)
+        }
+        Denom::Native(_) => {}
+    };
+
+    Ok(msgs)
 }
 
 fn get_lp_token_amounts_to_mint(
@@ -484,9 +488,8 @@ fn increase_token_reserves(
             }
         }
         Denom::Cw1155(_) => {
-            let new_reserves = get_reserves_by_status(token_amounts, token.reserves.clone(), false);
-            let existing_reserves =
-                get_reserves_by_status(token_amounts, token.reserves.clone(), true);
+            let new_reserves = get_reserves_by_status(token_amounts, &token.reserves, false);
+            let existing_reserves = get_reserves_by_status(token_amounts, &token.reserves, true);
 
             token.reserves = token
                 .reserves
@@ -526,11 +529,8 @@ fn get_token2_amounts_required(
         Ok(max_token2.to_vec())
     } else {
         let token1_total_amount = get_token_total_amount(input_token1);
-        let token1_total_reserve = get_token_total_amount(&get_reserves_by_status(
-            token1_reserves,
-            input_token1.to_vec(),
-            true,
-        ));
+        let token1_total_reserve =
+            get_token_total_amount(&get_reserves_by_status(token1_reserves, input_token1, true));
         let token2_amount = token1_total_amount
             .checked_mul(get_reserve_amount(token2_reserves, None))
             .map_err(StdError::overflow)
@@ -555,7 +555,7 @@ fn get_token2_amounts_required(
 
 fn get_reserves_by_status(
     token: &Vec<TokenInfo>,
-    reserves: Vec<TokenInfo>,
+    reserves: &Vec<TokenInfo>,
     is_exists: bool,
 ) -> Vec<TokenInfo> {
     token
@@ -591,17 +591,6 @@ fn get_token_total_amount(token: &Vec<TokenInfo>) -> Uint128 {
         .map(|token| token.amount)
         .reduce(|acc, e| acc + e)
         .unwrap_or_default()
-}
-
-fn get_indexed_value<T, U>(first_vec: &Vec<T>, second_vec: &Vec<U>, index: usize) -> T
-where
-    T: Copy,
-{
-    if first_vec.len() == second_vec.len() {
-        first_vec[index]
-    } else {
-        *first_vec.first().unwrap()
-    }
 }
 
 fn get_lp_tokens(tokens_info: &Vec<TokenInfo>) -> Option<Vec<TokenInfo>> {
@@ -1059,13 +1048,13 @@ pub fn execute_remove_liquidity(
         decrease_token_reserves(token2, &token2_amounts)
     })?;
 
-    let token1_transfer_msg = get_transfer_msg_by_denom(
+    let token1_transfer_msg = get_transfer_to_msg_by_denom(
         &token1.denom,
         &info.sender,
         &env.contract.address,
         &token1_amounts,
     )?;
-    let token2_transfer_msg = get_transfer_msg_by_denom(
+    let token2_transfer_msg = get_transfer_to_msg_by_denom(
         &token2.denom,
         &info.sender,
         &env.contract.address,
@@ -1095,7 +1084,7 @@ pub fn execute_remove_liquidity(
         ]))
 }
 
-fn get_transfer_msg_by_denom(
+fn get_transfer_to_msg_by_denom(
     denom: &Denom,
     recipient: &Addr,
     contract_addr: &Addr,
@@ -1267,19 +1256,17 @@ fn get_fee_transfer_msg(
     sender: &Addr,
     recipient: &Addr,
     fee_denom: &Denom,
-    amounts: Vec<Uint128>,
+    tokens: &Vec<TokenInfo>,
 ) -> StdResult<CosmosMsg> {
     match fee_denom {
         Denom::Cw20(addr) => {
-            get_cw20_transfer_from_msg(sender, recipient, addr, *amounts.first().unwrap())
+            get_cw20_transfer_from_msg(sender, recipient, addr, tokens.first().unwrap().amount)
         }
-        Denom::Cw1155(denom) => {
-            get_cw1155_transfer_msg(sender, recipient, &denom.address, &denom.tokens, &amounts)
-        }
+        Denom::Cw1155(addr) => get_cw1155_transfer_msg(sender, recipient, addr, tokens),
         Denom::Native(denom) => Ok(get_bank_transfer_to_msg(
             recipient,
             denom,
-            *amounts.first().unwrap(),
+            tokens.first().unwrap().amount,
         )),
     }
 }
@@ -1293,106 +1280,121 @@ fn fee_decimal_to_uint128(decimal: Decimal) -> StdResult<Uint128> {
     Ok(result / FEE_DECIMAL_PRECISION)
 }
 
-fn get_input_price(
-    input_amounts: &Vec<Uint128>,
-    input_reserves: &Vec<Uint128>,
-    output_reserves: &Vec<Uint128>,
+fn validate_zero_reserves(
+    input_tokens: &Vec<TokenInfo>,
+    input_reserves: &Vec<TokenInfo>,
+    output_reserves: &Vec<TokenInfo>,
+) -> Result<(), StdError> {
+    let zero_reserve = input_tokens.into_iter().find(|token| {
+        let reserve = input_reserves
+            .into_iter()
+            .find(|reserve| reserve.id == token.id);
+
+        if let Some(reserve) = reserve {
+            reserve.amount.is_zero()
+        } else {
+            true
+        }
+    });
+
+    if zero_reserve.is_some() || output_reserves.first().unwrap().amount.is_zero() {
+        Err(StdError::generic_err("No liquidity"))
+    } else {
+        Ok(())
+    }
+}
+
+fn get_input_prices(
+    input_tokens: &Vec<TokenInfo>,
+    input_reserves: &Vec<TokenInfo>,
+    output_reserves: &Vec<TokenInfo>,
     fee_percent: Decimal,
-) -> StdResult<Vec<Uint128>> {
-    if input_reserves.first().unwrap().is_zero() || output_reserves.first().unwrap().is_zero() {
-        return Err(StdError::generic_err("No liquidity"));
-    };
+) -> StdResult<Vec<TokenInfo>> {
+    validate_zero_reserves(input_tokens, input_reserves, output_reserves)?;
 
     let fee_percent = fee_decimal_to_uint128(fee_percent)?;
     let fee_reduction_percent = FEE_SCALE_FACTOR - fee_percent;
-    let input_amounts_with_fee = &input_amounts
+    let input_tokens_with_fee = &input_tokens
         .into_iter()
-        .map(|amount| Uint512::from(amount.full_mul(fee_reduction_percent)))
+        .map(|token| Uint512::from(token.amount.full_mul(fee_reduction_percent)))
         .collect::<Vec<Uint512>>();
-    let numerators: Vec<Uint512> = if output_reserves.len() < input_amounts_with_fee.len() {
-        input_amounts_with_fee
-            .to_vec()
-            .into_iter()
-            .enumerate()
-            .map(|(index, amount)| {
-                amount
-                    .checked_mul(Uint512::from(get_indexed_value(
-                        output_reserves,
-                        input_amounts_with_fee,
-                        index,
-                    )))
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect()
-    } else {
-        output_reserves
-            .to_vec()
-            .into_iter()
-            .enumerate()
-            .map(|(index, amount)| {
-                Uint512::from(amount)
-                    .checked_mul(get_indexed_value(
-                        input_amounts_with_fee,
-                        output_reserves,
-                        index,
-                    ))
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect()
-    };
-    let denominators: Vec<Uint512> = input_reserves
+
+    let numerators: Vec<Uint512> = input_tokens_with_fee
+        .to_vec()
+        .into_iter()
+        .map(|amount| {
+            amount
+                .checked_mul(Uint512::from(output_reserves.first().unwrap().amount))
+                .map_err(StdError::overflow)
+                .unwrap()
+        })
+        .collect();
+    println!(
+        "{:?}, {:?}",
+        get_reserves_by_status(input_reserves, input_tokens, true),
+        input_reserves
+    );
+    let denominators: Vec<Uint512> = get_reserves_by_status(input_reserves, input_tokens, true)
         .to_vec()
         .into_iter()
         .enumerate()
         .map(|(index, reserve)| {
-            Uint512::from(reserve)
+            Uint512::from(reserve.amount)
                 .checked_mul(Uint512::from(FEE_SCALE_FACTOR))
                 .map_err(StdError::overflow)
                 .unwrap()
-                .checked_add(input_amounts_with_fee[index])
+                .checked_add(input_tokens_with_fee[index])
                 .map_err(StdError::overflow)
                 .unwrap()
         })
         .collect();
 
-    Ok(numerators
-        .clone()
+    Ok(input_tokens
+        .to_vec()
         .into_iter()
         .enumerate()
-        .map(|(index, numerator)| {
-            Uint128::try_from(
-                numerator
-                    .checked_div(get_indexed_value(&denominators, &numerators, index))
-                    .map_err(StdError::divide_by_zero)
-                    .unwrap(),
-            )
-            .unwrap()
+        .map(|(index, mut token)| {
+            let input_price = numerators[index]
+                .checked_div(denominators[index])
+                .map_err(StdError::divide_by_zero)
+                .unwrap();
+
+            token.amount = Uint128::try_from(input_price).unwrap();
+            token
         })
         .collect())
 }
 
-fn get_protocol_fee_amount(
-    input_amounts: &Vec<Uint128>,
+fn get_protocol_fee_amounts(
+    input_tokens: &Vec<TokenInfo>,
     fee_percent: Decimal,
-) -> StdResult<Vec<Uint128>> {
+) -> StdResult<Vec<TokenInfo>> {
     if fee_percent.is_zero() {
-        return Ok(vec![Uint128::zero()]);
+        return Ok(vec![
+            TokenInfo {
+                id: None,
+                amount: Uint128::zero(),
+                uri: None
+            };
+            input_tokens.len()
+        ]);
     }
 
     let fee_percent = fee_decimal_to_uint128(fee_percent)?;
-    Ok(input_amounts
+    Ok(input_tokens
+        .to_vec()
         .into_iter()
-        .map(|input_amount| {
-            Uint128::try_from(
-                input_amount
+        .map(|mut token| {
+            token.amount = Uint128::try_from(
+                token
+                    .amount
                     .full_mul(fee_percent)
                     .checked_div(Uint256::from(FEE_SCALE_FACTOR))
                     .map_err(StdError::divide_by_zero)
                     .unwrap(),
             )
-            .unwrap()
+            .unwrap();
+            token
         })
         .collect())
 }
@@ -1414,21 +1416,21 @@ fn get_amount_for_denom(coins: &[Coin], denom: &str) -> Coin {
 pub fn execute_swap(
     deps: DepsMut,
     info: &MessageInfo,
-    input_amounts: Vec<Uint128>,
     _env: Env,
-    input_token_enum: TokenSelect,
+    input_token_select: TokenSelect,
+    input_tokens: Vec<TokenInfo>,
+    min_output_amounts: Vec<Uint128>,
     recipient: String,
-    min_tokens: Vec<Uint128>,
     expiration: Option<Expiration>,
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &_env.block)?;
 
-    let input_token_item = match input_token_enum {
+    let input_token_item = match input_token_select {
         TokenSelect::Token1 => TOKEN1,
         TokenSelect::Token2 => TOKEN2,
     };
     let input_token = input_token_item.load(deps.storage)?;
-    let output_token_item = match input_token_enum {
+    let output_token_item = match input_token_select {
         TokenSelect::Token1 => TOKEN2,
         TokenSelect::Token2 => TOKEN1,
     };
@@ -1437,152 +1439,93 @@ pub fn execute_swap(
     // validate input_amount if native input token
     validate_input_amount(
         &info.funds,
-        *input_amounts.first().unwrap(),
+        input_tokens.first().unwrap().amount,
         &input_token.denom,
     )?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let tokens_bought = get_input_price(
-        &input_amounts,
+    let tokens_bought = get_input_prices(
+        &input_tokens,
         &input_token.reserves,
         &output_token.reserves,
         total_fee_percent,
     )?;
 
-    let invalid_token = min_tokens
-        .clone()
+    let invalid_token = min_output_amounts
+        .to_vec()
         .into_iter()
         .enumerate()
-        .find(|(index, min_token)| {
-            if min_tokens.len() == tokens_bought.len() {
-                min_token > &tokens_bought[*index]
-            } else {
-                min_token > tokens_bought.first().unwrap()
-            }
-        });
+        .find(|(index, amount)| amount > &tokens_bought[*index].amount);
 
-    if let Some((index, min_token)) = invalid_token {
+    if let Some((index, amount)) = invalid_token {
         return Err(ContractError::SwapMinError {
-            min: min_token,
-            available: tokens_bought[index],
+            min: amount,
+            available: tokens_bought[index].amount,
         });
     }
 
     // Calculate fees
-    let protocol_fee_amounts = get_protocol_fee_amount(&input_amounts, fees.protocol_fee_percent)?;
-    let input_amounts_minus_protocol_fee = input_amounts
-        .clone()
+    let protocol_fee_amounts = get_protocol_fee_amounts(&input_tokens, fees.protocol_fee_percent)?;
+    let input_amounts_minus_protocol_fee = input_tokens
+        .to_vec()
         .into_iter()
         .enumerate()
-        .map(|(index, input_amount)| {
-            input_amount
-                .checked_sub(get_indexed_value(
-                    &protocol_fee_amounts,
-                    &input_amounts,
-                    index,
-                ))
-                .unwrap()
+        .map(|(index, mut token)| {
+            token.amount = token
+                .amount
+                .checked_sub(protocol_fee_amounts[index].amount)
+                .unwrap();
+            token
         })
-        .collect::<Vec<Uint128>>();
+        .collect::<Vec<TokenInfo>>();
 
-    let mut msgs = match input_token.denom.clone() {
-        Denom::Cw20(addr) => vec![get_cw20_transfer_from_msg(
-            &info.sender,
-            &_env.contract.address,
-            &addr,
-            *input_amounts_minus_protocol_fee.first().unwrap(),
-        )?],
-        Denom::Cw1155(denom) => vec![get_cw1155_transfer_msg(
-            &info.sender,
-            &_env.contract.address,
-            &denom.address,
-            &denom.tokens,
-            &input_amounts_minus_protocol_fee,
-        )?],
-        Denom::Native(_) => vec![],
-    };
+    let mut transfer_msgs: Vec<CosmosMsg> = vec![];
+    transfer_msgs.extend(get_transfer_from_msg_by_denom(
+        &input_token.denom,
+        &info.sender,
+        &_env.contract.address,
+        &input_amounts_minus_protocol_fee,
+    )?);
 
     // Send protocol fee to protocol fee recipient
-    protocol_fee_amounts.into_iter().for_each(|fee_amount| {
-        if !fee_amount.is_zero() {
-            msgs.push(
-                get_fee_transfer_msg(
-                    &info.sender,
-                    &fees.protocol_fee_recipient,
-                    &input_token.denom,
-                    vec![fee_amount],
-                )
-                .unwrap(),
-            )
-        }
-    });
+    if protocol_fee_amounts
+        .to_vec()
+        .into_iter()
+        .find(|token| token.amount.is_zero())
+        .is_none()
+    {
+        transfer_msgs.push(get_fee_transfer_msg(
+            &info.sender,
+            &fees.protocol_fee_recipient,
+            &input_token.denom,
+            &protocol_fee_amounts,
+        )?)
+    };
 
     let recipient = deps.api.addr_validate(&recipient)?;
     // Create transfer to message
-    msgs.push(match output_token.denom {
-        Denom::Cw20(addr) => {
-            get_cw20_transfer_to_msg(&recipient, &addr, *tokens_bought.first().unwrap())?
-        }
-        Denom::Cw1155(denom) => get_cw1155_transfer_msg(
-            &_env.contract.address,
-            &recipient,
-            &denom.address,
-            &denom.tokens,
-            &tokens_bought,
-        )?,
-        Denom::Native(denom) => {
-            get_bank_transfer_to_msg(&recipient, &denom, *tokens_bought.first().unwrap())
-        }
-    });
+    transfer_msgs.push(get_transfer_to_msg_by_denom(
+        &output_token.denom,
+        &recipient,
+        &_env.contract.address,
+        &tokens_bought,
+    )?);
 
-    input_token_item.update(
-        deps.storage,
-        |mut input_token| -> Result<_, ContractError> {
-            input_token.reserves = input_token
-                .reserves
-                .into_iter()
-                .enumerate()
-                .map(|(index, reserve)| {
-                    reserve
-                        .checked_add(input_amounts_minus_protocol_fee[index])
-                        .map_err(StdError::overflow)
-                        .unwrap()
-                })
-                .collect();
+    input_token_item.update(deps.storage, |token| -> Result<_, ContractError> {
+        increase_token_reserves(token, &input_amounts_minus_protocol_fee)
+    })?;
 
-            Ok(input_token)
-        },
-    )?;
+    output_token_item.update(deps.storage, |token| -> Result<_, ContractError> {
+        decrease_token_reserves(token, &tokens_bought)
+    })?;
 
-    output_token_item.update(
-        deps.storage,
-        |mut output_token| -> Result<_, ContractError> {
-            output_token.reserves = output_token
-                .reserves
-                .clone()
-                .into_iter()
-                .enumerate()
-                .map(|(index, reserve)| {
-                    reserve
-                        .checked_sub(get_indexed_value(
-                            &tokens_bought,
-                            &output_token.reserves,
-                            index,
-                        ))
-                        .map_err(StdError::overflow)
-                        .unwrap()
-                })
-                .collect();
-
-            Ok(output_token)
-        },
-    )?;
-
-    Ok(Response::new().add_messages(msgs).add_attributes(vec![
-        attr("native_sold", format!("{:?}", input_amounts)),
-        attr("token_bought", format!("{:?}", tokens_bought)),
-    ]))
+    Ok(Response::new()
+        .add_messages(transfer_msgs)
+        .add_attributes(vec![
+            attr("native_sold", format!("{:?}", input_tokens)),
+            attr("token_bought", format!("{:?}", tokens_bought)),
+        ]))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1617,7 +1560,7 @@ pub fn execute_pass_through_swap(
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let amounts_to_transfer = get_input_price(
+    let amounts_to_transfer = get_input_prices(
         &input_tokens_amount,
         &input_token.reserves,
         &transfer_token.reserves,
@@ -1626,7 +1569,7 @@ pub fn execute_pass_through_swap(
 
     // Calculate fees
     let protocol_fee_amounts =
-        get_protocol_fee_amount(&input_tokens_amount, fees.protocol_fee_percent)?;
+        get_protocol_fee_amounts(&input_tokens_amount, fees.protocol_fee_percent)?;
     let input_amounts_minus_protocol_fee = input_tokens_amount
         .clone()
         .into_iter()
@@ -1821,14 +1764,14 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
 
 pub fn query_token1_for_token2_price(
     deps: Deps,
-    token1_amounts: Vec<Uint128>,
+    token1_amounts: Vec<TokenInfo>,
 ) -> StdResult<Token1ForToken2PriceResponse> {
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let token2_amounts = get_input_price(
+    let token2_amounts = get_input_prices(
         &token1_amounts,
         &token1.reserves,
         &token2.reserves,
@@ -1840,15 +1783,15 @@ pub fn query_token1_for_token2_price(
 
 pub fn query_token2_for_token1_price(
     deps: Deps,
-    token2_amount: Vec<Uint128>,
+    token2_amounts: Vec<TokenInfo>,
 ) -> StdResult<Token2ForToken1PriceResponse> {
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let token1_amounts = get_input_price(
-        &token2_amount,
+    let token1_amounts = get_input_prices(
+        &token2_amounts,
         &token2.reserves,
         &token1.reserves,
         total_fee_percent,
@@ -2059,45 +2002,97 @@ mod tests {
     }
 
     #[test]
-    fn test_get_input_price() {
+    fn test_get_input_prices() {
         let fee_percent = Decimal::from_str("0.3").unwrap();
         // Base case
         assert_eq!(
-            get_input_price(
-                &vec![Uint128::new(10)],
-                &vec![Uint128::new(100)],
-                &vec![Uint128::new(100)],
+            get_input_prices(
+                &vec![TokenInfo {
+                    id: None,
+                    amount: Uint128::new(10),
+                    uri: None
+                }],
+                &vec![TokenInfo {
+                    id: None,
+                    amount: Uint128::new(100),
+                    uri: None
+                }],
+                &vec![TokenInfo {
+                    id: None,
+                    amount: Uint128::new(100),
+                    uri: None
+                }],
                 fee_percent
             )
             .unwrap(),
-            vec![Uint128::new(9)]
+            vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(9),
+                uri: None
+            }]
         );
 
         // No input reserve error
-        let err = get_input_price(
-            &vec![Uint128::new(10)],
-            &vec![Uint128::new(0)],
-            &vec![Uint128::new(100)],
+        let err = get_input_prices(
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(10),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(0),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
             fee_percent,
         )
         .unwrap_err();
         assert_eq!(err, StdError::generic_err("No liquidity"));
 
         // No output reserve error
-        let err = get_input_price(
-            &vec![Uint128::new(10)],
-            &vec![Uint128::new(100)],
-            &vec![Uint128::new(0)],
+        let err = get_input_prices(
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(10),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(100),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(0),
+                uri: None,
+            }],
             fee_percent,
         )
         .unwrap_err();
         assert_eq!(err, StdError::generic_err("No liquidity"));
 
         // No reserve error
-        let err = get_input_price(
-            &vec![Uint128::new(10)],
-            &vec![Uint128::new(0)],
-            &vec![Uint128::new(0)],
+        let err = get_input_prices(
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(10),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(0),
+                uri: None,
+            }],
+            &vec![TokenInfo {
+                id: None,
+                amount: Uint128::new(0),
+                uri: None,
+            }],
             fee_percent,
         )
         .unwrap_err();
