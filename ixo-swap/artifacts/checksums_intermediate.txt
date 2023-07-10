@@ -1,1 +1,1 @@
-4db453ba8dde127b32ffd445524519a9fcb6c2f3b02b67ced178eda586311198  ./target/wasm32-unknown-unknown/release/wasmswap.wasm
+c6b4ebacbef8a6d2303265b887d5765a0970d4ca5842eff50efc21b508ffe370  ./target/wasm32-unknown-unknown/release/wasmswap.wasm

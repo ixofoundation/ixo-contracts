@@ -51,21 +51,21 @@ pub enum ExecuteMsg {
     Swap {
         input_token_select: TokenSelect,
         input_tokens: Vec<TokenInfo>,
-        min_output_amounts: Vec<Uint128>,
+        output_min_amounts: Vec<Uint128>,
         expiration: Option<Expiration>,
     },
     /// Chained swap converting A -> B and B -> C by leveraging two swap contracts
     PassThroughSwap {
         output_amm_address: String,
-        input_token: TokenSelect,
-        input_tokens_amount: Vec<Uint128>,
-        output_min_tokens: Vec<Uint128>,
+        input_token_select: TokenSelect,
+        input_tokens: Vec<TokenInfo>,
+        output_min_amounts: Vec<Uint128>,
         expiration: Option<Expiration>,
     },
     SwapAndSendTo {
         input_token_select: TokenSelect,
         input_tokens: Vec<TokenInfo>,
-        min_output_amounts: Vec<Uint128>,
+        output_min_amounts: Vec<Uint128>,
         recipient: String,
         expiration: Option<Expiration>,
     },

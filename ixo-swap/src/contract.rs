@@ -192,7 +192,7 @@ pub fn execute(
         ExecuteMsg::Swap {
             input_token_select,
             input_tokens,
-            min_output_amounts,
+            output_min_amounts,
             expiration,
             ..
         } => {
@@ -205,16 +205,16 @@ pub fn execute(
                 env,
                 input_token_select,
                 input_tokens,
-                min_output_amounts,
+                output_min_amounts,
                 info.sender.to_string(),
                 expiration,
             )
         }
         ExecuteMsg::PassThroughSwap {
             output_amm_address,
-            input_token,
-            input_tokens_amount,
-            output_min_tokens,
+            input_token_select,
+            input_tokens,
+            output_min_amounts,
             expiration,
         } => {
             if FROZEN.load(deps.storage)? {
@@ -225,16 +225,16 @@ pub fn execute(
                 info,
                 env,
                 output_amm_address,
-                input_token,
-                input_tokens_amount,
-                output_min_tokens,
+                input_token_select,
+                input_tokens,
+                output_min_amounts,
                 expiration,
             )
         }
         ExecuteMsg::SwapAndSendTo {
             input_token_select,
             input_tokens,
-            min_output_amounts,
+            output_min_amounts,
             recipient,
             expiration,
         } => {
@@ -247,7 +247,7 @@ pub fn execute(
                 env,
                 input_token_select,
                 input_tokens,
-                min_output_amounts,
+                output_min_amounts,
                 recipient,
                 expiration,
             )
@@ -1329,11 +1329,6 @@ fn get_input_prices(
                 .unwrap()
         })
         .collect();
-    println!(
-        "{:?}, {:?}",
-        get_reserves_by_status(input_reserves, input_tokens, true),
-        input_reserves
-    );
     let denominators: Vec<Uint512> = get_reserves_by_status(input_reserves, input_tokens, true)
         .to_vec()
         .into_iter()
@@ -1419,7 +1414,7 @@ pub fn execute_swap(
     _env: Env,
     input_token_select: TokenSelect,
     input_tokens: Vec<TokenInfo>,
-    min_output_amounts: Vec<Uint128>,
+    output_min_amounts: Vec<Uint128>,
     recipient: String,
     expiration: Option<Expiration>,
 ) -> Result<Response, ContractError> {
@@ -1452,7 +1447,7 @@ pub fn execute_swap(
         total_fee_percent,
     )?;
 
-    let invalid_token = min_output_amounts
+    let invalid_token = output_min_amounts
         .to_vec()
         .into_iter()
         .enumerate()
@@ -1466,15 +1461,15 @@ pub fn execute_swap(
     }
 
     // Calculate fees
-    let protocol_fee_amounts = get_protocol_fee_amounts(&input_tokens, fees.protocol_fee_percent)?;
-    let input_amounts_minus_protocol_fee = input_tokens
+    let protocol_fees = get_protocol_fee_amounts(&input_tokens, fees.protocol_fee_percent)?;
+    let input_tokens_without_protocol_fee = input_tokens
         .to_vec()
         .into_iter()
         .enumerate()
         .map(|(index, mut token)| {
             token.amount = token
                 .amount
-                .checked_sub(protocol_fee_amounts[index].amount)
+                .checked_sub(protocol_fees[index].amount)
                 .unwrap();
             token
         })
@@ -1485,11 +1480,11 @@ pub fn execute_swap(
         &input_token.denom,
         &info.sender,
         &_env.contract.address,
-        &input_amounts_minus_protocol_fee,
+        &input_tokens_without_protocol_fee,
     )?);
 
     // Send protocol fee to protocol fee recipient
-    if protocol_fee_amounts
+    if protocol_fees
         .to_vec()
         .into_iter()
         .find(|token| token.amount.is_zero())
@@ -1499,7 +1494,7 @@ pub fn execute_swap(
             &info.sender,
             &fees.protocol_fee_recipient,
             &input_token.denom,
-            &protocol_fee_amounts,
+            &protocol_fees,
         )?)
     };
 
@@ -1513,7 +1508,7 @@ pub fn execute_swap(
     )?);
 
     input_token_item.update(deps.storage, |token| -> Result<_, ContractError> {
-        increase_token_reserves(token, &input_amounts_minus_protocol_fee)
+        increase_token_reserves(token, &input_tokens_without_protocol_fee)
     })?;
 
     output_token_item.update(deps.storage, |token| -> Result<_, ContractError> {
@@ -1534,19 +1529,19 @@ pub fn execute_pass_through_swap(
     info: MessageInfo,
     _env: Env,
     output_amm_address: String,
-    input_token_enum: TokenSelect,
-    input_tokens_amount: Vec<Uint128>,
-    output_min_tokens: Vec<Uint128>,
+    input_token_select: TokenSelect,
+    input_tokens: Vec<TokenInfo>,
+    output_min_amounts: Vec<Uint128>,
     expiration: Option<Expiration>,
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &_env.block)?;
 
-    let input_token_state = match input_token_enum {
+    let input_token_state = match input_token_select {
         TokenSelect::Token1 => TOKEN1,
         TokenSelect::Token2 => TOKEN2,
     };
     let input_token = input_token_state.load(deps.storage)?;
-    let transfer_token_state = match input_token_enum {
+    let transfer_token_state = match input_token_select {
         TokenSelect::Token1 => TOKEN2,
         TokenSelect::Token2 => TOKEN1,
     };
@@ -1554,78 +1549,66 @@ pub fn execute_pass_through_swap(
 
     validate_input_amount(
         &info.funds,
-        *input_tokens_amount.first().unwrap(),
+        input_tokens.first().unwrap().amount,
         &input_token.denom,
     )?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let amounts_to_transfer = get_input_prices(
-        &input_tokens_amount,
+    let tokens_to_transfer = get_input_prices(
+        &input_tokens,
         &input_token.reserves,
         &transfer_token.reserves,
         total_fee_percent,
     )?;
 
     // Calculate fees
-    let protocol_fee_amounts =
-        get_protocol_fee_amounts(&input_tokens_amount, fees.protocol_fee_percent)?;
-    let input_amounts_minus_protocol_fee = input_tokens_amount
-        .clone()
+    let protocol_fees = get_protocol_fee_amounts(&input_tokens, fees.protocol_fee_percent)?;
+    let input_tokens_without_protocol_fee = input_tokens
+        .to_vec()
         .into_iter()
         .enumerate()
-        .map(|(index, input_amount)| {
-            input_amount
-                .checked_sub(get_indexed_value(
-                    &protocol_fee_amounts,
-                    &input_tokens_amount,
-                    index,
-                ))
-                .unwrap()
+        .map(|(index, mut token)| {
+            token.amount = token
+                .amount
+                .checked_sub(protocol_fees[index].amount)
+                .unwrap();
+            token
         })
-        .collect::<Vec<Uint128>>();
+        .collect::<Vec<TokenInfo>>();
 
     // Transfer input amount - protocol fee to contract
-    let mut msgs = match input_token.denom.clone() {
-        Denom::Cw20(addr) => vec![get_cw20_transfer_from_msg(
-            &info.sender,
-            &_env.contract.address,
-            &addr,
-            *input_amounts_minus_protocol_fee.first().unwrap(),
-        )?],
-        Denom::Cw1155(denom) => vec![get_cw1155_transfer_msg(
-            &info.sender,
-            &_env.contract.address,
-            &denom.address,
-            &denom.tokens,
-            &input_amounts_minus_protocol_fee,
-        )?],
-        Denom::Native(_) => vec![],
-    };
+    let mut transfer_msgs: Vec<CosmosMsg> = vec![];
+    transfer_msgs.extend(get_transfer_from_msg_by_denom(
+        &input_token.denom,
+        &info.sender,
+        &_env.contract.address,
+        &input_tokens_without_protocol_fee,
+    )?);
 
     // Send protocol fee to protocol fee recipient
-    protocol_fee_amounts.into_iter().for_each(|fee_amount| {
-        if !fee_amount.is_zero() {
-            msgs.push(
-                get_fee_transfer_msg(
-                    &info.sender,
-                    &fees.protocol_fee_recipient,
-                    &input_token.denom,
-                    vec![fee_amount],
-                )
-                .unwrap(),
-            )
-        }
-    });
+    if protocol_fees
+        .to_vec()
+        .into_iter()
+        .find(|token| token.amount.is_zero())
+        .is_none()
+    {
+        transfer_msgs.push(get_fee_transfer_msg(
+            &info.sender,
+            &fees.protocol_fee_recipient,
+            &input_token.denom,
+            &protocol_fees,
+        )?)
+    };
 
     let output_amm_address = deps.api.addr_validate(&output_amm_address)?;
 
     // Increase allowance of output contract is transfer token is cw20
     if let Denom::Cw20(addr) = &transfer_token.denom {
-        msgs.push(get_cw20_increase_allowance_msg(
+        transfer_msgs.push(get_cw20_increase_allowance_msg(
             addr,
             &output_amm_address,
-            *amounts_to_transfer.first().unwrap(),
+            tokens_to_transfer.first().unwrap().amount,
             Some(Expiration::AtHeight(_env.block.height + 1)),
         )?)
     };
@@ -1643,14 +1626,14 @@ pub fn execute_pass_through_swap(
     }?;
 
     let swap_msg = ExecuteMsg::SwapAndSendTo {
-        input_token: transfer_input_token_enum,
-        input_amounts: amounts_to_transfer.clone(),
+        input_token_select: transfer_input_token_enum,
+        input_tokens: tokens_to_transfer.clone(),
         recipient: info.sender.to_string(),
-        min_tokens: output_min_tokens,
+        output_min_amounts,
         expiration,
     };
 
-    msgs.push(
+    transfer_msgs.push(
         WasmMsg::Execute {
             contract_addr: output_amm_address.into(),
             msg: to_binary(&swap_msg)?,
@@ -1659,50 +1642,27 @@ pub fn execute_pass_through_swap(
                 Denom::Cw1155(_) => vec![],
                 Denom::Native(denom) => vec![Coin {
                     denom,
-                    amount: *amounts_to_transfer.first().unwrap(),
+                    amount: tokens_to_transfer.first().unwrap().amount,
                 }],
             },
         }
         .into(),
     );
 
-    input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
-        // Add input amount - protocol fee to input token reserve
-        token.reserves = token
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, reserve)| {
-                reserve
-                    .checked_add(input_amounts_minus_protocol_fee[index])
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect();
-
-        Ok(token)
+    input_token_state.update(deps.storage, |token| -> Result<_, ContractError> {
+        increase_token_reserves(token, &input_tokens_without_protocol_fee)
     })?;
 
-    transfer_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
-        token.reserves = token
-            .reserves
-            .into_iter()
-            .enumerate()
-            .map(|(index, reserve)| {
-                reserve
-                    .checked_sub(amounts_to_transfer[index])
-                    .map_err(StdError::overflow)
-                    .unwrap()
-            })
-            .collect();
-
-        Ok(token)
+    transfer_token_state.update(deps.storage, |token| -> Result<_, ContractError> {
+        decrease_token_reserves(token, &tokens_to_transfer)
     })?;
 
-    Ok(Response::new().add_messages(msgs).add_attributes(vec![
-        attr("input_token_amount", format!("{:?}", input_tokens_amount)),
-        attr("native_transferred", format!("{:?}", amounts_to_transfer)),
-    ]))
+    Ok(Response::new()
+        .add_messages(transfer_msgs)
+        .add_attributes(vec![
+            attr("input_token_amount", format!("{:?}", input_tokens)),
+            attr("native_transferred", format!("{:?}", tokens_to_transfer)),
+        ]))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
