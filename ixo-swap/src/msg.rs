@@ -2,7 +2,7 @@ use cw1155_lp::TokenInfo;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Binary, Decimal, Uint128};
+use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use cw20::Expiration;
 
@@ -51,7 +51,7 @@ pub enum ExecuteMsg {
     Swap {
         input_token_select: TokenSelect,
         input_tokens: Vec<TokenInfo>,
-        output_min_amounts: Vec<Uint128>,
+        output_min_tokens: Vec<TokenInfo>,
         expiration: Option<Expiration>,
     },
     /// Chained swap converting A -> B and B -> C by leveraging two swap contracts
@@ -59,13 +59,13 @@ pub enum ExecuteMsg {
         output_amm_address: String,
         input_token_select: TokenSelect,
         input_tokens: Vec<TokenInfo>,
-        output_min_amounts: Vec<Uint128>,
+        output_min_tokens: Vec<TokenInfo>,
         expiration: Option<Expiration>,
     },
     SwapAndSendTo {
         input_token_select: TokenSelect,
         input_tokens: Vec<TokenInfo>,
-        output_min_amounts: Vec<Uint128>,
+        output_min_tokens: Vec<TokenInfo>,
         recipient: String,
         expiration: Option<Expiration>,
     },
@@ -90,10 +90,12 @@ pub enum QueryMsg {
     },
     Info {},
     Token1ForToken2Price {
-        token1_amounts: Vec<TokenInfo>,
+        input_tokens: Vec<TokenInfo>,
+        output_tokens: Option<Vec<TokenInfo>>,
     },
     Token2ForToken1Price {
-        token2_amounts: Vec<TokenInfo>,
+        input_tokens: Vec<TokenInfo>,
+        output_tokens: Option<Vec<TokenInfo>>,
     },
     Fee {},
     Token {
@@ -109,6 +111,11 @@ pub struct MigrateMsg {
     pub freeze_pool: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub struct QueryTokenMetadataMsg {
+    pub id: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct TokenResponse {
     name: String,
@@ -116,12 +123,6 @@ pub struct TokenResponse {
     decimals: String,
     image: String,
     index: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct A {
-    pub path: String,
-    pub data: Binary,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

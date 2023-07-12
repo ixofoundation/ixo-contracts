@@ -591,73 +591,88 @@ fn cw1155_to_cw20_swap() {
         )
         .unwrap();
 
-    // // Swap cw1155 for cw20
-    // let swap_msg = ExecuteMsg::PassThroughSwap {
-    //     output_amm_address: amm2.to_string(),
-    //     input_token_select: TokenSelect::Token1,
-    //     input_tokens: vec![
-    //         TokenInfo {
-    //             id: Some(token_ids[0].clone()),
-    //             amount: Uint128::new(10),
-    //             uri: Some(token_uris[0].clone()),
-    //         },
-    //         TokenInfo {
-    //             id: Some(token_ids[1].clone()),
-    //             amount: Uint128::new(10),
-    //             uri: Some(token_uris[1].clone()),
-    //         },
-    //     ],
-    //     output_min_amounts: vec![Uint128::new(8)],
-    //     expiration: None,
-    // };
-    // let _res = router
-    //     .execute_contract(owner.clone(), amm1.clone(), &swap_msg, &[])
-    //     .unwrap();
+    // Swap cw1155 for cw20
+    let swap_msg = ExecuteMsg::PassThroughSwap {
+        output_amm_address: amm2.to_string(),
+        input_token_select: TokenSelect::Token1,
+        input_tokens: vec![
+            TokenInfo {
+                id: Some(token_ids[0].clone()),
+                amount: Uint128::new(10),
+                uri: Some(token_uris[0].clone()),
+            },
+            TokenInfo {
+                id: Some(token_ids[1].clone()),
+                amount: Uint128::new(10),
+                uri: Some(token_uris[1].clone()),
+            },
+        ],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(8),
+            uri: None,
+        }],
+        expiration: None,
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm1.clone(), &swap_msg, &[])
+        .unwrap();
 
-    // // ensure balances updated
-    // let token1_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
-    // assert_eq!(
-    //     token1_balance.balances,
-    //     vec![Uint128::new(3990), Uint128::new(3990)]
-    // );
+    // ensure balances updated
+    let token1_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
+    assert_eq!(
+        token1_balance.balances,
+        vec![Uint128::new(8990), Uint128::new(8990)]
+    );
 
-    // let token2_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
-    // assert_eq!(token2_balance, Uint128::new(4008));
+    let token2_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
+    assert_eq!(token2_balance, Uint128::new(4008));
 
-    // // Swap cw20 for cw1155
-    // let allowance_msg = Cw20ExecuteMsg::IncreaseAllowance {
-    //     spender: amm2.to_string(),
-    //     amount: Uint128::new(10),
-    //     expires: None,
-    // };
-    // let _res = router
-    //     .execute_contract(owner.clone(), cw20_token.addr(), &allowance_msg, &[])
-    //     .unwrap();
+    // Swap cw20 for cw1155
+    let allowance_msg = Cw20ExecuteMsg::IncreaseAllowance {
+        spender: amm2.to_string(),
+        amount: Uint128::new(10),
+        expires: None,
+    };
+    let _res = router
+        .execute_contract(owner.clone(), cw20_token.addr(), &allowance_msg, &[])
+        .unwrap();
 
-    // let swap_msg = ExecuteMsg::PassThroughSwap {
-    //     output_amm_address: amm1.to_string(),
-    //     input_token_select: TokenSelect::Token1,
-    //     input_tokens: vec![TokenInfo {
-    //         id: None,
-    //         amount: Uint128::new(10),
-    //         uri: None,
-    //     }],
-    //     output_min_amounts: vec![Uint128::new(10), Uint128::new(10)],
-    //     expiration: None,
-    // };
-    // let _res = router
-    //     .execute_contract(owner.clone(), amm2.clone(), &swap_msg, &[])
-    //     .unwrap();
+    let swap_msg = ExecuteMsg::PassThroughSwap {
+        output_amm_address: amm1.to_string(),
+        input_token_select: TokenSelect::Token1,
+        input_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(10),
+            uri: None,
+        }],
+        output_min_tokens: vec![
+            TokenInfo {
+                id: Some(token_ids[0].clone()),
+                amount: Uint128::new(10),
+                uri: Some(token_uris[0].clone()),
+            },
+            TokenInfo {
+                id: Some(token_ids[1].clone()),
+                amount: Uint128::new(10),
+                uri: Some(token_uris[1].clone()),
+            },
+        ],
+        expiration: None,
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm2.clone(), &swap_msg, &[])
+        .unwrap();
 
-    // // ensure balances updated
-    // let token1_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
-    // assert_eq!(
-    //     token1_balance.balances,
-    //     vec![Uint128::new(4000), Uint128::new(4000)]
-    // );
+    // ensure balances updated
+    let token1_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
+    assert_eq!(
+        token1_balance.balances,
+        vec![Uint128::new(9000), Uint128::new(9000)]
+    );
 
-    // let token2_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
-    // assert_eq!(token2_balance, Uint128::new(3998));
+    let token2_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
+    assert_eq!(token2_balance, Uint128::new(3998));
 }
 
 fn get_batch_balance_for_owner(
@@ -840,7 +855,11 @@ fn cw1155_to_native_swap() {
                 uri: Some(token_uris[1].clone()),
             },
         ],
-        output_min_amounts: vec![Uint128::new(9)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(9),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -883,64 +902,75 @@ fn cw1155_to_native_swap() {
     let balance: Coin = bank_balance(&mut router, &owner, NATIVE_TOKEN_DENOM.to_string());
     assert_eq!(balance.amount, Uint128::new(1818));
 
-    // // Swap native for cw1155
-    // let swap_msg = ExecuteMsg::Swap {
-    //     input_token_select: TokenSelect::Token2,
-    //     input_tokens: vec![TokenInfo {
-    //         id: None,
-    //         amount: Uint128::new(16),
-    //         uri: None,
-    //     }],
-    //     output_min_amounts: vec![Uint128::new(8), Uint128::new(8)],
-    //     expiration: None,
-    // };
-    // let _res = router
-    //     .execute_contract(
-    //         owner.clone(),
-    //         amm_addr.clone(),
-    //         &swap_msg,
-    //         &[Coin {
-    //             denom: NATIVE_TOKEN_DENOM.into(),
-    //             amount: Uint128::new(16),
-    //         }],
-    //     )
-    //     .unwrap();
+    // Swap native for cw1155
+    let swap_msg = ExecuteMsg::Swap {
+        input_token_select: TokenSelect::Token2,
+        input_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(16),
+            uri: None,
+        }],
+        output_min_tokens: vec![
+            TokenInfo {
+                id: Some(token_ids[0].clone()),
+                amount: Uint128::new(8),
+                uri: Some(token_uris[0].clone()),
+            },
+            TokenInfo {
+                id: Some(token_ids[1].clone()),
+                amount: Uint128::new(8),
+                uri: Some(token_uris[1].clone()),
+            },
+        ],
+        expiration: None,
+    };
+    let _res = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &swap_msg,
+            &[Coin {
+                denom: NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(16),
+            }],
+        )
+        .unwrap();
 
-    // let info = get_info(&router, &amm_addr);
-    // assert_eq!(
-    //     info.token1_reserves,
-    //     vec![
-    //         TokenInfo {
-    //             id: Some(token_ids[0].clone()),
-    //             amount: Uint128::new(94),
-    //             uri: Some(token_uris[0].clone()),
-    //         },
-    //         TokenInfo {
-    //             id: Some(token_ids[1].clone()),
-    //             amount: Uint128::new(94),
-    //             uri: Some(token_uris[1].clone()),
-    //         }
-    //     ]
-    // );
-    // assert_eq!(
-    //     info.token2_reserves,
-    //     vec![TokenInfo {
-    //         id: None,
-    //         amount: Uint128::new(207),
-    //         uri: None,
-    //     }]
-    // );
+    let info = get_info(&router, &amm_addr);
+    assert_eq!(
+        info.token1_reserves,
+        vec![
+            TokenInfo {
+                id: Some(token_ids[0].clone()),
+                amount: Uint128::new(102),
+                uri: Some(token_uris[0].clone()),
+            },
+            TokenInfo {
+                id: Some(token_ids[1].clone()),
+                amount: Uint128::new(102),
+                uri: Some(token_uris[1].clone()),
+            }
+        ]
+    );
+    assert_eq!(
+        info.token2_reserves,
+        vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(198),
+            uri: None,
+        }]
+    );
 
-    // // Check balances of owner and buyer reflect the sale transaction
-    // let balance: Coin = bank_balance(&mut router, &owner, NATIVE_TOKEN_DENOM.to_string());
-    // assert_eq!(balance.amount, Uint128::new(1890));
+    // Check balances of owner and buyer reflect the sale transaction
+    let balance: Coin = bank_balance(&mut router, &owner, NATIVE_TOKEN_DENOM.to_string());
+    assert_eq!(balance.amount, Uint128::new(1802));
 
-    // // check owner balance
-    // let owner_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
-    // assert_eq!(
-    //     owner_balance.balances,
-    //     vec![Uint128::new(4909), Uint128::new(4909)]
-    // );
+    // check owner balance
+    let owner_balance = get_batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids);
+    assert_eq!(
+        owner_balance.balances,
+        vec![Uint128::new(4898), Uint128::new(4898)]
+    );
 }
 
 #[test]
@@ -1605,7 +1635,11 @@ fn swap_tokens_happy_path() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(9)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(9),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -1653,7 +1687,11 @@ fn swap_tokens_happy_path() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(7)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(7),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -1713,7 +1751,11 @@ fn swap_tokens_happy_path() {
             amount: Uint128::new(16),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(19)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(19),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -1757,7 +1799,11 @@ fn swap_tokens_happy_path() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(3)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(3),
+            uri: None,
+        }],
         recipient: owner.to_string(),
         expiration: None,
     };
@@ -1908,7 +1954,11 @@ fn swap_with_fee_split() {
             amount: Uint128::new(10_000_000),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(9_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(9_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -1961,7 +2011,11 @@ fn swap_with_fee_split() {
             amount: Uint128::new(10_000_000),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(7_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(7_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2026,7 +2080,11 @@ fn swap_with_fee_split() {
             amount: Uint128::new(16_000_000),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(19_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(19_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2073,7 +2131,11 @@ fn swap_with_fee_split() {
             uri: None,
         }],
         recipient: owner.to_string(),
-        output_min_amounts: vec![Uint128::new(3_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(3_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2337,7 +2399,11 @@ fn swap_native_to_native_tokens_happy_path() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(9)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(9),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2383,7 +2449,11 @@ fn swap_native_to_native_tokens_happy_path() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(7)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(7),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2430,7 +2500,11 @@ fn swap_native_to_native_tokens_happy_path() {
             amount: Uint128::new(16),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(19)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(19),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2611,7 +2685,11 @@ fn token_to_token_swap_with_fee_split() {
             amount: Uint128::new(10_000_000),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(8_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(8_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2661,7 +2739,11 @@ fn token_to_token_swap_with_fee_split() {
             amount: Uint128::new(10_000_000),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(1_000_000)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(1_000_000),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2872,7 +2954,11 @@ fn test_pass_through_swap() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(8)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(8),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router
@@ -2910,7 +2996,11 @@ fn test_pass_through_swap() {
             amount: Uint128::new(10),
             uri: None,
         }],
-        output_min_amounts: vec![Uint128::new(1)],
+        output_min_tokens: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(1),
+            uri: None,
+        }],
         expiration: None,
     };
     let _res = router

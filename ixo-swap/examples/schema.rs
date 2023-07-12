@@ -4,11 +4,11 @@ use std::fs::create_dir_all;
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
 use cw20::BalanceResponse;
-use wasmswap::msg::{
+use ixoswap::msg::{
     ExecuteMsg, InfoResponse, InstantiateMsg, MigrateMsg, QueryMsg, Token1ForToken2PriceResponse,
     Token2ForToken1PriceResponse,
 };
-use wasmswap::state::Token;
+use ixoswap::state::Token;
 
 fn main() {
     let mut out_dir = current_dir().unwrap();
