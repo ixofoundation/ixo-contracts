@@ -1282,15 +1282,12 @@ fn fee_decimal_to_uint128(decimal: Decimal) -> StdResult<Uint128> {
     Ok(result / FEE_DECIMAL_PRECISION)
 }
 
-fn validate_zero_reserves(
-    contract_token: &Token,
-    input_tokens: &Vec<TokenInfo>,
-) -> Result<(), StdError> {
+fn validate_zero_reserves(contract_token: &Token, tokens: &Vec<TokenInfo>) -> Result<(), StdError> {
     let is_reserves_zero = match contract_token.denom {
         Denom::Cw20(_) | Denom::Native(_) => {
             contract_token.reserves.first().unwrap().amount.is_zero()
         }
-        Denom::Cw1155(_) => input_tokens
+        Denom::Cw1155(_) => tokens
             .into_iter()
             .find(|token| {
                 let reserve = contract_token
@@ -1388,20 +1385,6 @@ fn get_input_prices_for_multiple_output(
         .map_err(StdError::overflow)?
         .checked_add(input_amount_with_fee)
         .map_err(StdError::overflow)?;
-    // get_reserves_by_status(input_reserves, input_tokens, true)
-    //     .to_vec()
-    //     .into_iter()
-    //     .enumerate()
-    //     .map(|(index, reserve)| {
-    //         Uint512::from(reserve.amount)
-    //             .checked_mul(Uint512::from(FEE_SCALE_FACTOR))
-    //             .map_err(StdError::overflow)
-    //             .unwrap()
-    //             .checked_add(input_tokens_with_fee[index])
-    //             .map_err(StdError::overflow)
-    //             .unwrap()
-    //     })
-    //     .collect();
 
     Ok(output_tokens
         .to_vec()
@@ -1645,7 +1628,7 @@ pub fn execute_pass_through_swap(
         &input_token.denom,
     )?;
     validate_zero_reserves(&input_token, &input_tokens)?;
-    validate_zero_reserves(&transfer_token, &input_tokens)?;
+    validate_zero_reserves(&transfer_token, &output_min_tokens)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
