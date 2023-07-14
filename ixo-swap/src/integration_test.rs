@@ -833,14 +833,6 @@ fn cw1155_to_native_swap() {
     );
 
     // Swap cw1155 for native
-    let allowance_msg = Cw1155ExecuteMsg::ApproveAll {
-        operator: amm_addr.to_string(),
-        expires: None,
-    };
-    let _res = router
-        .execute_contract(owner.clone(), cw1155_token.clone(), &allowance_msg, &[])
-        .unwrap();
-
     let swap_msg = ExecuteMsg::Swap {
         input_token_select: TokenSelect::Token1,
         input_tokens: vec![

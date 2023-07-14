@@ -100,8 +100,8 @@ pub fn mint(
     to: String,
     token_id: TokenId,
     amount: Uint128,
-        //Addition to save uri as token info
-        uri: String,
+    //Addition to save uri as token info
+    uri: String,
     msg: Option<Binary>,
 ) -> Result<Response, ContractError> {
     let ExecuteEnv { mut deps, info, .. } = env;

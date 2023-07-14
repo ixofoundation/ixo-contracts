@@ -1,7 +1,7 @@
 use cosmwasm_std::{
-    attr, entry_point, to_binary, Addr, BankQuery, Binary, BlockInfo, Coin, CosmosMsg, Decimal,
-    Deps, DepsMut, Env, MessageInfo, QueryRequest, Reply, Response, StdError, StdResult, SubMsg,
-    Uint128, Uint256, Uint512, WasmMsg,
+    attr, entry_point, from_binary, to_binary, to_vec, Addr, Binary, BlockInfo, Coin,
+    ContractResult, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest,
+    Reply, Response, StdError, StdResult, SubMsg, SystemResult, Uint128, Uint256, Uint512, WasmMsg,
 };
 use cw0::parse_reply_instantiate_data;
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg};
@@ -9,14 +9,15 @@ use cw1155_lp::{BatchBalanceForAllResponse, TokenInfo};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
 use cw20_base::contract::query_balance;
+use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 
 use crate::error::ContractError;
 use crate::msg::{
     Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, MigrateMsg, QueryMsg,
-    QueryTokenMetadataMsg, Token1ForToken2PriceResponse, Token2ForToken1PriceResponse,
-    TokenResponse, TokenSelect,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1ForToken2PriceResponse,
+    Token2ForToken1PriceResponse, TokenSelect,
 };
 use crate::state::{Fees, Token, FEES, FROZEN, LP_TOKEN, LP_TOKEN_ADDRESS, OWNER, TOKEN1, TOKEN2};
 
@@ -1769,23 +1770,27 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-pub fn query_token(deps: Deps, id: String) -> StdResult<Coin> {
-    let address = String::from("ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2");
-    let denom = String::from("uixo");
-    let query_request = QueryRequest::Stargate {
-        path: "custom/cosmos.bank.v1beta1.Query/Balance".to_string(),
-        data: to_binary(&BankQuery::Balance { address, denom })?,
+pub fn query_token(deps: Deps, id: String) -> StdResult<QueryTokenMetadataResponse> {
+    let encoded_request = QueryTokenMetadataRequest { id }.encode_to_vec();
+    let query_request: QueryRequest<Empty> = QueryRequest::Stargate {
+        path: "/ixo.token.v1beta1.Query/TokenMetadata".to_string(),
+        data: Binary::from(encoded_request),
     };
+    let raw_request = to_vec(&query_request).map_err(|serialize_err| {
+        StdError::generic_err(format!("Serializing QueryRequest: {}", serialize_err))
+    })?;
 
-    let response: Coin = deps.querier.query(&query_request)?;
-
-    // let query_request = QueryRequest::Stargate {
-    //     path: "custom//ixo.token.v1beta1.Query/TokenMetadata".to_string(),
-    //     data: to_binary(&QueryTokenMetadataMsg { id })?,
-    // };
-    // let response: TokenResponse = deps.querier.query(&query_request)?;
-
-    Ok(response)
+    match deps.querier.raw_query(&raw_request) {
+        SystemResult::Err(system_err) => Err(StdError::generic_err(format!(
+            "Querier system error: {}",
+            system_err
+        ))),
+        SystemResult::Ok(ContractResult::Err(contract_err)) => Err(StdError::generic_err(format!(
+            "Querier contract error: {}",
+            contract_err
+        ))),
+        SystemResult::Ok(ContractResult::Ok(value)) => from_binary(&value),
+    }
 }
 
 pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {

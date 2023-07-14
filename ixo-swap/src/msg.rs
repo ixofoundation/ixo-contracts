@@ -111,18 +111,24 @@ pub struct MigrateMsg {
     pub freeze_pool: bool,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct QueryTokenMetadataMsg {
-    pub id: String,
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QueryTokenMetadataRequest {
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct TokenResponse {
-    name: String,
-    description: String,
-    decimals: String,
-    image: String,
-    index: String,
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
+pub struct QueryTokenMetadataResponse {
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub decimals: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub image: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub index: ::prost::alloc::string::String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
