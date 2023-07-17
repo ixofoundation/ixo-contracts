@@ -19,7 +19,9 @@ use crate::msg::{
     QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1ForToken2PriceResponse,
     Token2ForToken1PriceResponse, TokenSelect,
 };
-use crate::state::{Fees, Token, FEES, FROZEN, LP_TOKEN, LP_TOKEN_ADDRESS, OWNER, TOKEN1, TOKEN2};
+use crate::state::{
+    Fees, Token, CONFIG, FEES, FROZEN, LP_TOKEN, LP_TOKEN_ADDRESS, OWNER, TOKEN1, TOKEN2,
+};
 
 // Version info for migration info
 pub const CONTRACT_NAME: &str = "crates.io:ixoswap";
@@ -56,25 +58,8 @@ pub fn instantiate(
 
     LP_TOKEN.save(deps.storage, &msg.lp_token)?;
 
-    let owner = msg.owner.map(|h| deps.api.addr_validate(&h)).transpose()?;
+    let owner = deps.api.addr_validate(&msg.owner)?;
     OWNER.save(deps.storage, &owner)?;
-
-    let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
-    let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
-    if total_fee_percent > max_fee_percent {
-        return Err(ContractError::FeesTooHigh {
-            max_fee_percent,
-            total_fee_percent,
-        });
-    }
-
-    let fees = Fees {
-        lp_fee_percent: msg.lp_fee_percent,
-        protocol_fee_percent: msg.protocol_fee_percent,
-        protocol_fee_recipient,
-    };
-    FEES.save(deps.storage, &fees)?;
 
     // Depositing is not frozen by default
     FROZEN.save(deps.storage, &false)?;
@@ -147,6 +132,20 @@ fn get_default_instantiation_submessage(code_id: u64, minter: String) -> SubMsg 
     };
 
     SubMsg::reply_on_success(instantiate_lp_token_msg, INSTANTIATE_LP_TOKEN_REPLY_ID)
+}
+
+fn validate_fees(fees: &Fees) -> Result<(), ContractError> {
+    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
+
+    if total_fee_percent > max_fee_percent {
+        return Err(ContractError::FeesTooHigh {
+            max_fee_percent,
+            total_fee_percent,
+        });
+    };
+
+    Ok(())
 }
 
 // And declare a custom Error variant for the ones where you will want to make use of it
@@ -254,38 +253,9 @@ pub fn execute(
                 expiration,
             )
         }
-        ExecuteMsg::UpdateConfig {
-            owner,
-            protocol_fee_recipient,
-            lp_fee_percent,
-            protocol_fee_percent,
-        } => execute_update_config(
-            deps,
-            info,
-            owner,
-            lp_fee_percent,
-            protocol_fee_percent,
-            protocol_fee_recipient,
-        ),
+        ExecuteMsg::UpdateConfig { owner, fees } => execute_update_config(deps, info, owner, fees),
         ExecuteMsg::FreezeDeposits { freeze } => execute_freeze_deposits(deps, info.sender, freeze),
     }
-}
-
-fn execute_freeze_deposits(
-    deps: DepsMut,
-    sender: Addr,
-    freeze: bool,
-) -> Result<Response, ContractError> {
-    if let Some(owner) = OWNER.load(deps.storage)? {
-        if sender != owner {
-            return Err(ContractError::UnauthorizedPoolFreeze {});
-        }
-    } else {
-        return Err(ContractError::UnauthorizedPoolFreeze {});
-    }
-
-    FROZEN.save(deps.storage, &freeze)?;
-    Ok(Response::new().add_attribute("action", "freezing-contracts"))
 }
 
 fn check_expiration(
@@ -300,6 +270,13 @@ fn check_expiration(
             Ok(())
         }
         None => Ok(()),
+    }
+}
+
+fn validate_input_denom(denom: &Denom, tokens: &Vec<TokenInfo>) -> Result<(), ContractError> {
+    match denom {
+        Denom::Cw1155(_) => Ok(()),
+        _ => Ok(()),
     }
 }
 
@@ -318,13 +295,14 @@ pub fn execute_add_liquidity(
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_addr = LP_TOKEN_ADDRESS.load(deps.storage)?;
 
-    // validate funds
-    validate_input_amount(
+    validate_input_denom(&token1.denom, &input_token1)?;
+    validate_input_denom(&token2.denom, &max_token2)?;
+    validate_input_funds(
         &info.funds,
         input_token1.first().unwrap().amount,
         &token1.denom,
     )?;
-    validate_input_amount(
+    validate_input_funds(
         &info.funds,
         max_token2.first().unwrap().amount,
         &token2.denom,
@@ -829,14 +807,12 @@ fn get_cw1155_token_balance(
         .collect())
 }
 
-fn validate_input_amount(
+fn validate_input_funds(
     actual_funds: &[Coin],
     given_amount: Uint128,
     given_denom: &Denom,
 ) -> Result<(), ContractError> {
     match given_denom {
-        Denom::Cw20(_) => Ok(()),
-        Denom::Cw1155(_) => Ok(()),
         Denom::Native(denom) => {
             let actual = get_amount_for_denom(actual_funds, denom);
             if actual.amount != given_amount {
@@ -850,6 +826,7 @@ fn validate_input_amount(
             };
             Ok(())
         }
+        _ => Ok(()),
     }
 }
 
@@ -894,49 +871,65 @@ fn get_cw20_increase_allowance_msg(
     Ok(exec_allowance.into())
 }
 
-pub fn execute_update_config(
+pub fn execute_update_owner(
     deps: DepsMut,
-    info: MessageInfo,
-    new_owner: Option<String>,
-    lp_fee_percent: Decimal,
-    protocol_fee_percent: Decimal,
-    protocol_fee_recipient: String,
+    sender: Addr,
+    new_owner: String,
 ) -> Result<Response, ContractError> {
-    let owner = OWNER.load(deps.storage)?;
-    if Some(info.sender) != owner {
+    validate_owner(deps, sender)?;
+
+    let new_owner = deps.api.addr_validate(&new_owner)?;
+    OWNER.save(deps.storage, &new_owner)?;
+
+    Ok(Response::new().add_attributes(vec![attr("new_owner", new_owner)]))
+}
+
+pub fn execute_update_fees(
+    deps: DepsMut,
+    sender: Addr,
+    fees: Fees,
+) -> Result<Response, ContractError> {
+    validate_owner(deps, sender)?;
+
+    validate_fees(&fees)?;
+    FEES.save(deps.storage, &fees)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("lp_fee_percent", fees.lp_fee_percent.to_string()),
+        attr(
+            "protocol_fee_percent",
+            fees.protocol_fee_percent.to_string(),
+        ),
+        attr(
+            "protocol_fee_recipient",
+            fees.protocol_fee_recipient.to_string(),
+        ),
+    ]))
+}
+
+pub fn execute_update_config(deps: DepsMut, sender: Addr) -> Result<Response, ContractError> {
+    validate_owner(deps, sender)?;
+
+    Ok(Response::default())
+}
+
+fn execute_freeze_deposits(
+    deps: DepsMut,
+    sender: Addr,
+    freeze: bool,
+) -> Result<Response, ContractError> {
+    validate_owner(deps, sender)?;
+
+    FROZEN.save(deps.storage, &freeze)?;
+    Ok(Response::new().add_attribute("action", "freezing-contracts"))
+}
+
+fn validate_owner(deps: DepsMut, sender: Addr) -> Result<(), ContractError> {
+    if sender != OWNER.load(deps.storage)? {
         return Err(ContractError::Unauthorized {});
     }
 
-    let new_owner_addr = new_owner
-        .as_ref()
-        .map(|h| deps.api.addr_validate(h))
-        .transpose()?;
-    OWNER.save(deps.storage, &new_owner_addr)?;
-
-    let total_fee_percent = lp_fee_percent + protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
-    if total_fee_percent > max_fee_percent {
-        return Err(ContractError::FeesTooHigh {
-            max_fee_percent,
-            total_fee_percent,
-        });
-    }
-
-    let protocol_fee_recipient = deps.api.addr_validate(&protocol_fee_recipient)?;
-    let updated_fees = Fees {
-        protocol_fee_recipient: protocol_fee_recipient.clone(),
-        lp_fee_percent,
-        protocol_fee_percent,
-    };
-    FEES.save(deps.storage, &updated_fees)?;
-
-    let new_owner = new_owner.unwrap_or_default();
-    Ok(Response::new().add_attributes(vec![
-        attr("new_owner", new_owner),
-        attr("lp_fee_percent", lp_fee_percent.to_string()),
-        attr("protocol_fee_percent", protocol_fee_percent.to_string()),
-        attr("protocol_fee_recipient", protocol_fee_recipient.to_string()),
-    ]))
+    Ok(())
 }
 
 pub fn execute_remove_liquidity(
@@ -953,6 +946,10 @@ pub fn execute_remove_liquidity(
     let lp_token_addr = LP_TOKEN_ADDRESS.load(deps.storage)?;
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
+
+    validate_input_denom(&token1.denom, &min_token1)?;
+    validate_input_denom(&token2.denom, &min_token2)?;
+
     let lp_tokens = get_lp_tokens(&min_token1);
     let lp_token_balances = get_lp_token_balances(
         deps.as_ref(),
@@ -1504,8 +1501,9 @@ pub fn execute_swap(
     };
     let output_token = output_token_item.load(deps.storage)?;
 
-    // validate input_amount if native input token
-    validate_input_amount(
+    validate_input_denom(&input_token.denom, &input_tokens)?;
+    validate_input_denom(&output_token.denom, &output_min_tokens)?;
+    validate_input_funds(
         &info.funds,
         input_tokens.first().unwrap().amount,
         &input_token.denom,
@@ -1623,7 +1621,9 @@ pub fn execute_pass_through_swap(
     };
     let transfer_token = transfer_token_state.load(deps.storage)?;
 
-    validate_input_amount(
+    validate_input_denom(&input_token.denom, &input_tokens)?;
+    validate_input_denom(&transfer_token.denom, &output_min_tokens)?;
+    validate_input_funds(
         &info.funds,
         input_tokens.first().unwrap().amount,
         &input_token.denom,
@@ -1853,7 +1853,7 @@ pub fn query_token2_for_token1_price(
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
     let fees = FEES.load(deps.storage)?;
-    let owner = OWNER.load(deps.storage)?.map(|o| o.into_string());
+    let owner = OWNER.load(deps.storage)?.into_string();
 
     Ok(FeeResponse {
         owner,
@@ -1885,28 +1885,11 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    let owner = match msg.owner {
-        None => None,
-        Some(o) => Some(deps.api.addr_validate(&o)?),
-    };
+    let owner = deps.api.addr_validate(&msg.owner)?;
     OWNER.save(deps.storage, &owner)?;
 
-    let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
-    let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
-    if total_fee_percent > max_fee_percent {
-        return Err(ContractError::FeesTooHigh {
-            max_fee_percent,
-            total_fee_percent,
-        });
-    }
-
-    let fees = Fees {
-        lp_fee_percent: msg.lp_fee_percent,
-        protocol_fee_percent: msg.protocol_fee_percent,
-        protocol_fee_recipient,
-    };
-    FEES.save(deps.storage, &fees)?;
+    validate_fees(&msg.fees)?;
+    FEES.save(deps.storage, &msg.fees)?;
 
     // By default deposits are not frozen
     FROZEN.save(deps.storage, &msg.freeze_pool)?;

@@ -6,17 +6,15 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use cw20::Expiration;
 
+use crate::state::Fees;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
     pub token1_denom: Denom,
     pub token2_denom: Denom,
     pub lp_token: Option<TokenSelect>,
     pub lp_token_code_id: u64,
-    pub owner: Option<String>,
-    pub protocol_fee_recipient: String,
-    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
-    pub protocol_fee_percent: Decimal,
-    pub lp_fee_percent: Decimal,
+    pub owner: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -71,9 +69,7 @@ pub enum ExecuteMsg {
     },
     UpdateConfig {
         owner: Option<String>,
-        lp_fee_percent: Decimal,
-        protocol_fee_percent: Decimal,
-        protocol_fee_recipient: String,
+        fees: Fees,
     },
     // Freeze adding new deposits
     FreezeDeposits {
@@ -104,10 +100,8 @@ pub enum QueryMsg {
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct MigrateMsg {
-    pub owner: Option<String>,
-    pub protocol_fee_recipient: String,
-    pub protocol_fee_percent: Decimal,
-    pub lp_fee_percent: Decimal,
+    pub owner: String,
+    pub fees: Fees,
     pub freeze_pool: bool,
 }
 
@@ -143,7 +137,7 @@ pub struct InfoResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
 pub struct FeeResponse {
-    pub owner: Option<String>,
+    pub owner: String,
     pub lp_fee_percent: Decimal,
     pub protocol_fee_percent: Decimal,
     pub protocol_fee_recipient: String,

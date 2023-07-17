@@ -19,15 +19,23 @@ pub struct Token {
 pub const TOKEN1: Item<Token> = Item::new("token1");
 pub const TOKEN2: Item<Token> = Item::new("token2");
 
-pub const OWNER: Item<Option<Addr>> = Item::new("owner");
+pub const OWNER: Item<Addr> = Item::new("owner");
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Fees {
     pub protocol_fee_recipient: Addr,
+    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
     pub protocol_fee_percent: Decimal,
     pub lp_fee_percent: Decimal,
 }
 
 pub const FEES: Item<Fees> = Item::new("fees");
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+pub struct Config {
+    pub allowed_denoms: Vec<String>,
+}
+
+pub const CONFIG: Item<Fees> = Item::new("config");
 
 pub const FROZEN: Item<bool> = Item::new("frozen");
