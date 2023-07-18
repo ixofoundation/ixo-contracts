@@ -6,7 +6,7 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use cw20::Expiration;
 
-use crate::state::Fees;
+use crate::state::{Config, Fees};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -67,11 +67,17 @@ pub enum ExecuteMsg {
         recipient: String,
         expiration: Option<Expiration>,
     },
-    UpdateConfig {
-        owner: Option<String>,
-        fees: Fees,
+    UpdateFees {
+        protocol_fee_recipient: String,
+        protocol_fee_percent: Decimal,
+        lp_fee_percent: Decimal,
     },
-    // Freeze adding new deposits
+    UpdateConfig {
+        config: Config,
+    },
+    TransferOwnership {
+        owner: String,
+    },
     FreezeDeposits {
         freeze: bool,
     },

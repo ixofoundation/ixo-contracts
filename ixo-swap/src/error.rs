@@ -46,11 +46,11 @@ pub enum ContractError {
         available: Uint128,
     },
 
+    #[error("Token with id: {id} has unsupported denom")]
+    UnsupportedTokenDenom { id: String },
+
     #[error("Incorrect native denom: provided: {provided}, required: {required}")]
     IncorrectNativeDenom { provided: String, required: String },
-
-    #[error("Incorrect token uri: id: {id}, uri: {uri}")]
-    IncorrectTokenUri { id: String, uri: String },
 
     #[error("Swap min error: min: {min}, available: {available}")]
     SwapMinError { min: Uint128, available: Uint128 },

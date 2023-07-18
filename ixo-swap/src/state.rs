@@ -36,6 +36,6 @@ pub struct Config {
     pub allowed_denoms: Vec<String>,
 }
 
-pub const CONFIG: Item<Fees> = Item::new("config");
+pub const CONFIG: Item<Config> = Item::new("config");
 
 pub const FROZEN: Item<bool> = Item::new("frozen");
