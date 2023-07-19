@@ -1,26 +1,26 @@
 use cosmwasm_std::{
-    attr, entry_point, from_binary, to_binary, to_vec, Addr, Binary, BlockInfo, Coin,
-    ContractResult, CosmosMsg, Decimal, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest,
-    Reply, Response, StdError, StdResult, SubMsg, SystemResult, Uint128, Uint256, Uint512, WasmMsg,
+    attr, entry_point, to_binary, Addr, Binary, BlockInfo, Coin, CosmosMsg, Decimal, Deps, DepsMut,
+    Env, MessageInfo, QueryRequest, Reply, Response, StdError, StdResult, SubMsg, Uint128, Uint256,
+    Uint512, WasmMsg,
 };
-use cw0::parse_reply_instantiate_data;
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg};
 use cw1155_lp::{BatchBalanceForAllResponse, TokenInfo};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
 use cw20_base::contract::query_balance;
+use cw_utils::parse_reply_instantiate_data;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
 use std::str::FromStr;
 
 use crate::error::ContractError;
 use crate::msg::{
-    Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, MigrateMsg, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1ForToken2PriceResponse,
+    ConfigResponse, Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, MigrateMsg,
+    QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1ForToken2PriceResponse,
     Token2ForToken1PriceResponse, TokenSelect,
 };
 use crate::state::{
-    Config, Fees, Token, CONFIG, FEES, FROZEN, LP_TOKEN, LP_TOKEN_ADDRESS, OWNER, TOKEN1, TOKEN2,
+    Config, Fee, Token, CONFIG, FEE, FROZEN, LP_TOKEN, LP_TOKEN_ADDRESS, OWNER, TOKEN1, TOKEN2,
 };
 
 // Version info for migration info
@@ -134,8 +134,13 @@ fn get_default_instantiation_submessage(code_id: u64, minter: String) -> SubMsg 
     SubMsg::reply_on_success(instantiate_lp_token_msg, INSTANTIATE_LP_TOKEN_REPLY_ID)
 }
 
-fn validate_fees(fees: &Fees) -> Result<(), ContractError> {
-    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+fn get_validated_fee(
+    deps: &DepsMut,
+    protocol_fee_recipient: String,
+    protocol_fee_percent: Decimal,
+    lp_fee_percent: Decimal,
+) -> Result<Fee, ContractError> {
+    let total_fee_percent = lp_fee_percent + protocol_fee_percent;
     let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
 
     if total_fee_percent > max_fee_percent {
@@ -145,7 +150,13 @@ fn validate_fees(fees: &Fees) -> Result<(), ContractError> {
         });
     };
 
-    Ok(())
+    let protocol_fee_recipient = deps.api.addr_validate(&protocol_fee_recipient)?;
+
+    Ok(Fee {
+        protocol_fee_recipient,
+        protocol_fee_percent,
+        lp_fee_percent,
+    })
 }
 
 // And declare a custom Error variant for the ones where you will want to make use of it
@@ -292,22 +303,25 @@ fn validate_input_denom(
     denom: &Denom,
     tokens: &Vec<TokenInfo>,
 ) -> Result<(), ContractError> {
-    // match denom {
-    //     Denom::Cw1155(_) => {
-    //         let config = CONFIG.load(deps.storage)?;
-    //         for token in tokens.into_iter() {
-    //             let token_metadata: QueryTokenMetadataResponse =
-    //                 query_token(deps.as_ref(), token.id.clone().unwrap())?;
+    match denom {
+        Denom::Cw1155(_) => {
+            let config = CONFIG.load(deps.storage)?;
+            for token in tokens.into_iter() {
+                let token_metadata: QueryTokenMetadataResponse = query_token_metadata(
+                    deps.as_ref(),
+                    token.id.clone().unwrap(),
+                    config.token_metadata_query_path.clone(),
+                )?;
 
-    //             if !config.allowed_denoms.contains(&token_metadata.name) {
-    //                 return Err(ContractError::UnsupportedTokenDenom {
-    //                     id: token.id.clone().unwrap(),
-    //                 });
-    //             }
-    //         }
-    //     }
-    //     _ => {}
-    // }
+                if !config.allowed_denoms.contains(&token_metadata.name) {
+                    return Err(ContractError::UnsupportedTokenDenom {
+                        id: token.id.clone().unwrap(),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
 
     Ok(())
 }
@@ -875,25 +889,20 @@ pub fn execute_update_fees(
 ) -> Result<Response, ContractError> {
     validate_owner(&deps, sender)?;
 
-    let protocol_fee_recipient = deps.api.addr_validate(&protocol_fee_recipient)?;
-    let fees = Fees {
+    let fee = get_validated_fee(
+        &deps,
         protocol_fee_recipient,
         protocol_fee_percent,
         lp_fee_percent,
-    };
-
-    validate_fees(&fees)?;
-    FEES.save(deps.storage, &fees)?;
+    )?;
+    FEE.save(deps.storage, &fee)?;
 
     Ok(Response::new().add_attributes(vec![
-        attr("lp_fee_percent", fees.lp_fee_percent.to_string()),
-        attr(
-            "protocol_fee_percent",
-            fees.protocol_fee_percent.to_string(),
-        ),
+        attr("lp_fee_percent", fee.lp_fee_percent.to_string()),
+        attr("protocol_fee_percent", fee.protocol_fee_percent.to_string()),
         attr(
             "protocol_fee_recipient",
-            fees.protocol_fee_recipient.to_string(),
+            fee.protocol_fee_recipient.to_string(),
         ),
     ]))
 }
@@ -1485,8 +1494,8 @@ pub fn execute_swap(
     validate_zero_reserves(&input_token, &input_tokens)?;
     validate_zero_reserves(&output_token, &output_min_tokens)?;
 
-    let fees = FEES.load(deps.storage)?;
-    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    let fee = FEE.load(deps.storage)?;
+    let total_fee_percent = fee.lp_fee_percent + fee.protocol_fee_percent;
     let tokens_bought = get_input_prices(
         &input_tokens,
         &input_token.reserves,
@@ -1505,12 +1514,12 @@ pub fn execute_swap(
     }
 
     // Calculate fees
-    let protocol_fees = get_protocol_fee_tokens(&input_tokens, fees.protocol_fee_percent)?;
+    let protocol_fee_tokens = get_protocol_fee_tokens(&input_tokens, fee.protocol_fee_percent)?;
     let mut input_tokens_without_protocol_fee = input_tokens.clone();
     for (index, token) in input_tokens_without_protocol_fee.iter_mut().enumerate() {
         token.amount = token
             .amount
-            .checked_sub(protocol_fees[index].amount)
+            .checked_sub(protocol_fee_tokens[index].amount)
             .map_err(StdError::overflow)?;
     }
 
@@ -1523,7 +1532,7 @@ pub fn execute_swap(
     )?);
 
     // Send protocol fee to protocol fee recipient
-    if protocol_fees
+    if protocol_fee_tokens
         .to_vec()
         .into_iter()
         .find(|token| token.amount.is_zero())
@@ -1531,9 +1540,9 @@ pub fn execute_swap(
     {
         transfer_msgs.push(get_fee_transfer_msg(
             &info.sender,
-            &fees.protocol_fee_recipient,
+            &fee.protocol_fee_recipient,
             &input_token.denom,
-            &protocol_fees,
+            &protocol_fee_tokens,
         )?)
     };
 
@@ -1596,8 +1605,8 @@ pub fn execute_pass_through_swap(
     validate_zero_reserves(&input_token, &input_tokens)?;
     validate_zero_reserves(&transfer_token, &output_min_tokens)?;
 
-    let fees = FEES.load(deps.storage)?;
-    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    let fee = FEE.load(deps.storage)?;
+    let total_fee_percent = fee.lp_fee_percent + fee.protocol_fee_percent;
     let tokens_to_transfer = get_input_prices(
         &input_tokens,
         &input_token.reserves,
@@ -1607,12 +1616,12 @@ pub fn execute_pass_through_swap(
     )?;
 
     // Calculate fees
-    let protocol_fees = get_protocol_fee_tokens(&input_tokens, fees.protocol_fee_percent)?;
+    let protocol_fee_tokens = get_protocol_fee_tokens(&input_tokens, fee.protocol_fee_percent)?;
     let mut input_tokens_without_protocol_fee = input_tokens.clone();
     for (index, token) in input_tokens_without_protocol_fee.iter_mut().enumerate() {
         token.amount = token
             .amount
-            .checked_sub(protocol_fees[index].amount)
+            .checked_sub(protocol_fee_tokens[index].amount)
             .map_err(StdError::overflow)?;
     }
 
@@ -1626,7 +1635,7 @@ pub fn execute_pass_through_swap(
     )?);
 
     // Send protocol fee to protocol fee recipient
-    if protocol_fees
+    if protocol_fee_tokens
         .to_vec()
         .into_iter()
         .find(|token| token.amount.is_zero())
@@ -1634,9 +1643,9 @@ pub fn execute_pass_through_swap(
     {
         transfer_msgs.push(get_fee_transfer_msg(
             &info.sender,
-            &fees.protocol_fee_recipient,
+            &fee.protocol_fee_recipient,
             &input_token.denom,
-            &protocol_fees,
+            &protocol_fee_tokens,
         )?)
     };
 
@@ -1726,44 +1735,35 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             output_tokens,
         )?),
         QueryMsg::Fee {} => to_binary(&query_fee(deps)?),
-        QueryMsg::Token { token_id } => to_binary(&query_token(deps, token_id)?),
+        QueryMsg::Config {} => to_binary(&query_config(deps)?),
     }
 }
 
-pub fn query_token(deps: Deps, id: String) -> StdResult<QueryTokenMetadataResponse> {
-    let encoded_request = QueryTokenMetadataRequest { id }.encode_to_vec();
-    let query_request: QueryRequest<Empty> = QueryRequest::Stargate {
-        path: "/ixo.token.v1beta1.Query/TokenMetadata".to_string(),
-        data: Binary::from(encoded_request),
-    };
+pub fn query_token_metadata(
+    deps: Deps,
+    id: String,
+    query_path: String,
+) -> StdResult<QueryTokenMetadataResponse> {
+    deps.querier.query(&QueryRequest::Stargate {
+        path: query_path,
+        data: Binary::from(QueryTokenMetadataRequest { id }.encode_to_vec()),
+    })
+}
 
-    let response = deps.querier.query(&query_request)?;
+pub fn query_config(deps: Deps) -> StdResult<ConfigResponse> {
+    let config = CONFIG.load(deps.storage)?;
 
-    Ok(response)
-    // let raw_request = to_vec(&query_request).map_err(|serialize_err| {
-    //     StdError::generic_err(format!("Serializing QueryRequest: {}", serialize_err))
-    // })?;
-
-    // match deps.querier.raw_query(&raw_request) {
-    //     SystemResult::Err(system_err) => Err(StdError::generic_err(format!(
-    //         "Querier system error: {}",
-    //         system_err
-    //     ))),
-    //     SystemResult::Ok(ContractResult::Err(contract_err)) => Err(StdError::generic_err(format!(
-    //         "Querier contract error: {}",
-    //         contract_err
-    //     ))),
-    //     SystemResult::Ok(ContractResult::Ok(value)) => from_binary(&value),
-    // }
+    Ok(ConfigResponse { config })
 }
 
 pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_address = LP_TOKEN_ADDRESS.load(deps.storage)?;
+    let owner = OWNER.load(deps.storage)?;
 
-    // TODO get total supply
     Ok(InfoResponse {
+        owner: owner.to_string(),
         token1_reserves: token1.reserves.clone(),
         token2_reserves: token2.reserves.clone(),
         token1_denom: token1.denom.clone(),
@@ -1781,8 +1781,8 @@ pub fn query_token1_for_token2_price(
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let fees = FEES.load(deps.storage)?;
-    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    let fee = FEE.load(deps.storage)?;
+    let total_fee_percent = fee.lp_fee_percent + fee.protocol_fee_percent;
     let token2_amounts = get_input_prices(
         &input_tokens,
         &token1.reserves,
@@ -1802,8 +1802,8 @@ pub fn query_token2_for_token1_price(
     let token1 = TOKEN1.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let fees = FEES.load(deps.storage)?;
-    let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    let fee = FEE.load(deps.storage)?;
+    let total_fee_percent = fee.lp_fee_percent + fee.protocol_fee_percent;
     let token1_amounts = get_input_prices(
         &input_tokens,
         &token2.reserves,
@@ -1816,14 +1816,12 @@ pub fn query_token2_for_token1_price(
 }
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
-    let fees = FEES.load(deps.storage)?;
-    let owner = OWNER.load(deps.storage)?.into_string();
+    let fee = FEE.load(deps.storage)?;
 
     Ok(FeeResponse {
-        owner,
-        lp_fee_percent: fees.lp_fee_percent,
-        protocol_fee_percent: fees.protocol_fee_percent,
-        protocol_fee_recipient: fees.protocol_fee_recipient.into_string(),
+        lp_fee_percent: fee.lp_fee_percent,
+        protocol_fee_percent: fee.protocol_fee_percent,
+        protocol_fee_recipient: fee.protocol_fee_recipient.to_string(),
     })
 }
 
@@ -1852,10 +1850,14 @@ pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, Co
     let owner = deps.api.addr_validate(&msg.owner)?;
     OWNER.save(deps.storage, &owner)?;
 
-    validate_fees(&msg.fees)?;
-    FEES.save(deps.storage, &msg.fees)?;
-
-    // By default deposits are not frozen
+    let fee = get_validated_fee(
+        &deps,
+        msg.protocol_fee_recipient,
+        msg.protocol_fee_percent,
+        msg.lp_fee_percent,
+    )?;
+    FEE.save(deps.storage, &fee)?;
+    CONFIG.save(deps.storage, &msg.config)?;
     FROZEN.save(deps.storage, &msg.freeze_pool)?;
 
     Ok(Response::default())

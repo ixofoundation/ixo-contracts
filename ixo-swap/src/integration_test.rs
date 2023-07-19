@@ -2,13 +2,22 @@
 
 use std::borrow::BorrowMut;
 
-use cosmwasm_std::{coins, to_binary, Addr, Coin, CosmosMsg, Decimal, Empty, Uint128, WasmMsg};
+use cosmwasm_std::{
+    coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, CosmosMsg, Decimal, Empty, Querier,
+    Storage, Uint128, WasmMsg,
+};
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg, TokenId};
 
-use crate::{error::ContractError, msg::MigrateMsg, state::Fees};
+use crate::{
+    error::ContractError,
+    msg::{ConfigResponse, MigrateMsg, QueryTokenMetadataResponse},
+    state::Config,
+};
 use cw1155_lp::TokenInfo;
 use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
-use cw_multi_test::{App, Contract, ContractWrapper, Executor};
+use cw_multi_test::{
+    App, Contract, ContractWrapper, Executor, StargateKeeper, StargateMsg, StargateQueryHandler,
+};
 use std::str::FromStr;
 
 use crate::msg::{
@@ -17,6 +26,31 @@ use crate::msg::{
 
 fn mock_app() -> App {
     App::default()
+}
+
+#[derive(Clone)]
+struct TokenMetadataQueryHandler;
+impl StargateQueryHandler for TokenMetadataQueryHandler {
+    fn stargate_query(
+        &self,
+        _api: &dyn Api,
+        _storage: &dyn Storage,
+        _querier: &dyn Querier,
+        _block: &BlockInfo,
+        _msg: StargateMsg,
+    ) -> anyhow::Result<Binary> {
+        let metadata = QueryTokenMetadataResponse {
+            name: "TEST".to_string(),
+            decimals: "0".to_string(),
+            description: "Test credits".to_string(),
+            image: "https://ipfs.io/ipfs/test".to_string(),
+            index: "1".to_string(),
+        };
+
+        Ok(to_binary(&metadata)?)
+    }
+
+    fn register_queries(&'static self, _keeper: &mut StargateKeeper<Empty, Empty>) {}
 }
 
 pub fn contract_amm() -> Box<dyn Contract<Empty>> {
@@ -68,6 +102,13 @@ fn get_fee(router: &App, contract_addr: &Addr) -> FeeResponse {
     router
         .wrap()
         .query_wasm_smart(contract_addr, &QueryMsg::Fee {})
+        .unwrap()
+}
+
+fn get_config(router: &App, contract_addr: &Addr) -> ConfigResponse {
+    router
+        .wrap()
+        .query_wasm_smart(contract_addr, &QueryMsg::Config {})
         .unwrap()
 }
 
@@ -193,21 +234,7 @@ fn test_instantiate() {
 
     let info = get_info(&router, &amm_addr);
     assert_eq!(info.lp_token_address, "contract2".to_string());
-
-    let update_fees_msg = ExecuteMsg::UpdateFees {
-        protocol_fee_recipient: owner.to_string(),
-        protocol_fee_percent: Decimal::zero(),
-        lp_fee_percent: Decimal::from_str("0.3").unwrap(),
-    };
-    let _res = router
-        .execute_contract(owner.clone(), amm_addr.clone(), &update_fees_msg, &[])
-        .unwrap();
-
-    let fee = get_fee(&router, &amm_addr);
-    assert_eq!(fee.lp_fee_percent, Decimal::from_str("0.3").unwrap());
-    assert_eq!(fee.protocol_fee_percent, Decimal::zero());
-    assert_eq!(fee.protocol_fee_recipient, owner.to_string());
-    assert_eq!(fee.owner, owner.to_string());
+    assert_eq!(info.owner, owner.to_string())
 }
 
 #[test]
@@ -238,6 +265,23 @@ fn amm_add_liquidity_cw1155() {
     );
 
     assert_ne!(cw1155_token, amm_addr);
+
+    let token_metadata_query_path = "/test.token.v1beta1.Query/TokenMetadata";
+    let update_config_msg = ExecuteMsg::UpdateConfig {
+        config: Config {
+            allowed_denoms: vec!["TEST".to_string()],
+            token_metadata_query_path: token_metadata_query_path.to_string(),
+        },
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_config_msg, &[])
+        .unwrap();
+    router.borrow_mut().init_modules(|router, _, _| {
+        router.stargate.register_query(
+            token_metadata_query_path,
+            Box::new(TokenMetadataQueryHandler),
+        )
+    });
 
     let mint_msg = Cw1155ExecuteMsg::BatchMint {
         to: owner.clone().into(),
@@ -462,6 +506,26 @@ fn cw1155_to_cw20_swap() {
     let _res = router
         .execute_contract(owner.clone(), amm2.clone(), &update_fees_msg, &[])
         .unwrap();
+
+    let token_metadata_query_path = "/test.token.v1beta1.Query/TokenMetadata";
+    let update_config_msg = ExecuteMsg::UpdateConfig {
+        config: Config {
+            allowed_denoms: vec!["TEST".to_string()],
+            token_metadata_query_path: token_metadata_query_path.to_string(),
+        },
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm1.clone(), &update_config_msg, &[])
+        .unwrap();
+    let _res = router
+        .execute_contract(owner.clone(), amm2.clone(), &update_config_msg, &[])
+        .unwrap();
+    router.borrow_mut().init_modules(|router, _, _| {
+        router.stargate.register_query(
+            token_metadata_query_path,
+            Box::new(TokenMetadataQueryHandler),
+        )
+    });
 
     let mint_msg = Cw1155ExecuteMsg::BatchMint {
         to: owner.clone().into(),
@@ -710,6 +774,23 @@ fn cw1155_to_native_swap() {
     let _res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &update_fees_msg, &[])
         .unwrap();
+
+    let token_metadata_query_path = "/test.token.v1beta1.Query/TokenMetadata";
+    let update_config_msg = ExecuteMsg::UpdateConfig {
+        config: Config {
+            allowed_denoms: vec!["TEST".to_string()],
+            token_metadata_query_path: token_metadata_query_path.to_string(),
+        },
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_config_msg, &[])
+        .unwrap();
+    router.borrow_mut().init_modules(|router, _, _| {
+        router.stargate.register_query(
+            token_metadata_query_path,
+            Box::new(TokenMetadataQueryHandler),
+        )
+    });
 
     let mint_msg = Cw1155ExecuteMsg::BatchMint {
         to: owner.clone().into(),
@@ -1329,162 +1410,160 @@ fn amm_add_and_remove_liquidity_cw20() {
     assert_eq!(owner_balance, Uint128::new(5000));
 }
 
-// #[test]
-// fn migrate() {
-//     let mut router = mock_app();
+#[test]
+fn migrate() {
+    let router = mock_app();
 
-//     const NATIVE_TOKEN_DENOM: &str = "juno";
-//     const IBC_TOKEN_DENOM: &str = "atom";
+    const NATIVE_TOKEN_DENOM: &str = "juno";
+    const IBC_TOKEN_DENOM: &str = "atom";
 
-//     let amm_id = router.store_code(contract_amm());
-//     let lp_token_id = router.store_code(contract_cw20());
-//     let owner = Addr::unchecked("owner");
-//     let fees = Fees {
-//         lp_fee_percent: Decimal::from_str("0.3").unwrap(),
-//         protocol_fee_percent: Decimal::zero(),
-//         protocol_fee_recipient: owner.clone(),
-//     };
+    let amm_id = router.store_code(contract_amm());
+    let lp_token_id = router.store_code(contract_cw20());
+    let owner = Addr::unchecked("owner");
+    let lp_fee_percent = Decimal::from_str("0.3").unwrap();
+    let protocol_fee_percent = Decimal::zero();
+    let protocol_fee_recipient = owner.to_string();
+    let config = Config {
+        allowed_denoms: vec!["TEST".to_string()],
+        token_metadata_query_path: "test_path".to_string(),
+    };
 
-//     let msg = InstantiateMsg {
-//         token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
-//         token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
-//         lp_token: None,
-//         lp_token_code_id: lp_token_id,
-//         owner: Some(owner.to_string()),
-//         fees: fees.clone(),
-//     };
-//     let amm_addr = router
-//         .instantiate_contract(
-//             amm_id,
-//             owner.clone(),
-//             &msg,
-//             &[],
-//             "amm",
-//             Some(owner.to_string()),
-//         )
-//         .unwrap();
+    let msg = InstantiateMsg {
+        token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
+        lp_token: None,
+        lp_token_code_id: lp_token_id,
+        owner: owner.to_string(),
+    };
+    let amm_addr = router
+        .instantiate_contract(
+            amm_id,
+            owner.clone(),
+            &msg,
+            &[],
+            "amm",
+            Some(owner.to_string()),
+        )
+        .unwrap();
 
-//     let fee = get_fee(&router, &amm_addr);
-//     assert_eq!(fee.protocol_fee_percent, fees.protocol_fee_percent);
-//     assert_eq!(fee.lp_fee_percent, fees.lp_fee_percent);
-//     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
+    let migrate_msg = MigrateMsg {
+        owner: owner.to_string(),
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: protocol_fee_recipient.clone(),
+        freeze_pool: false,
+        config: config.clone(),
+    };
 
-//     let migrate_msg = MigrateMsg {
-//         owner: Some(owner.to_string()),
-//         fees: fees.clone(),
-//         freeze_pool: false,
-//     };
+    router
+        .execute(
+            owner.clone(),
+            CosmosMsg::Wasm(WasmMsg::Migrate {
+                contract_addr: amm_addr.to_string(),
+                new_code_id: amm_id,
+                msg: to_binary(&migrate_msg).unwrap(),
+            }),
+        )
+        .unwrap();
 
-//     router
-//         .execute(
-//             owner.clone(),
-//             CosmosMsg::Wasm(WasmMsg::Migrate {
-//                 contract_addr: amm_addr.to_string(),
-//                 new_code_id: amm_id,
-//                 msg: to_binary(&migrate_msg).unwrap(),
-//             }),
-//         )
-//         .unwrap();
+    let migrated_config = get_config(&router, &amm_addr).config;
+    let migrated_info = get_info(&router, &amm_addr);
+    let migrated_fee = get_fee(&router, &amm_addr);
+    assert_eq!(migrated_fee.protocol_fee_percent, protocol_fee_percent);
+    assert_eq!(migrated_fee.lp_fee_percent, lp_fee_percent);
+    assert_eq!(migrated_fee.protocol_fee_recipient, protocol_fee_recipient);
+    assert_eq!(migrated_info.owner, owner.to_string());
+    assert_eq!(migrated_config, config);
+}
 
-//     let fee = get_fee(&router, &amm_addr);
-//     assert_eq!(fee.protocol_fee_percent, fees.protocol_fee_percent);
-//     assert_eq!(fee.lp_fee_percent, fees.lp_fee_percent);
-//     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
-//     assert_eq!(fee.owner, Some(owner.to_string()));
-// }
+#[test]
+fn migrate_and_freeze_pool() {
+    let mut router = mock_app();
 
-// #[test]
-// fn migrate_and_freeze_pool() {
-//     let mut router = mock_app();
+    let owner = Addr::unchecked("owner");
+    let funds = coins(100, NATIVE_TOKEN_DENOM);
+    router.borrow_mut().init_modules(|router, _, storage| {
+        router.bank.init_balance(storage, &owner, funds).unwrap()
+    });
 
-//     let owner = Addr::unchecked("owner");
-//     let funds = coins(100, NATIVE_TOKEN_DENOM);
-//     router.borrow_mut().init_modules(|router, _, storage| {
-//         router.bank.init_balance(storage, &owner, funds).unwrap()
-//     });
+    const NATIVE_TOKEN_DENOM: &str = "juno";
+    const IBC_TOKEN_DENOM: &str = "atom";
 
-//     const NATIVE_TOKEN_DENOM: &str = "juno";
-//     const IBC_TOKEN_DENOM: &str = "atom";
+    let amm_id = router.store_code(contract_amm());
+    let lp_token_id = router.store_code(contract_cw20());
+    let lp_fee_percent = Decimal::from_str("0.3").unwrap();
+    let protocol_fee_percent = Decimal::zero();
+    let protocol_fee_recipient = owner.to_string();
 
-//     let amm_id = router.store_code(contract_amm());
-//     let lp_token_id = router.store_code(contract_cw20());
-//     let fees = Fees {
-//         lp_fee_percent: Decimal::from_str("0.3").unwrap(),
-//         protocol_fee_percent: Decimal::zero(),
-//         protocol_fee_recipient: owner.clone(),
-//     };
+    let msg = InstantiateMsg {
+        token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
+        lp_token: None,
+        lp_token_code_id: lp_token_id,
+        owner: owner.to_string(),
+    };
+    let amm_addr = router
+        .instantiate_contract(
+            amm_id,
+            owner.clone(),
+            &msg,
+            &[],
+            "amm",
+            Some(owner.to_string()),
+        )
+        .unwrap();
 
-//     let msg = InstantiateMsg {
-//         token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
-//         token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
-//         lp_token: None,
-//         lp_token_code_id: lp_token_id,
-//         owner: Some(owner.to_string()),
-//         fees: fees.clone(),
-//     };
-//     let amm_addr = router
-//         .instantiate_contract(
-//             amm_id,
-//             owner.clone(),
-//             &msg,
-//             &[],
-//             "amm",
-//             Some(owner.to_string()),
-//         )
-//         .unwrap();
+    let migrate_msg = MigrateMsg {
+        owner: owner.to_string(),
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient,
+        freeze_pool: true,
+        config: Config {
+            allowed_denoms: vec!["TEST".to_string()],
+            token_metadata_query_path: "test_path".to_string(),
+        },
+    };
 
-//     let fee = get_fee(&router, &amm_addr);
-//     assert_eq!(fee.protocol_fee_percent, fees.protocol_fee_percent);
-//     assert_eq!(fee.lp_fee_percent, fees.lp_fee_percent);
-//     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
+    router
+        .execute(
+            owner.clone(),
+            CosmosMsg::Wasm(WasmMsg::Migrate {
+                contract_addr: amm_addr.to_string(),
+                new_code_id: amm_id,
+                msg: to_binary(&migrate_msg).unwrap(),
+            }),
+        )
+        .unwrap();
 
-//     let migrate_msg = MigrateMsg {
-//         owner: Some(owner.to_string()),
-//         fees,
-//         freeze_pool: true,
-//     };
-
-//     router
-//         .execute(
-//             owner.clone(),
-//             CosmosMsg::Wasm(WasmMsg::Migrate {
-//                 contract_addr: amm_addr.to_string(),
-//                 new_code_id: amm_id,
-//                 msg: to_binary(&migrate_msg).unwrap(),
-//             }),
-//         )
-//         .unwrap();
-
-//     let _ = get_fee(&router, &amm_addr);
-
-//     // now adding liquidity will fail
-//     let add_liquidity_msg = ExecuteMsg::AddLiquidity {
-//         input_token1: vec![TokenInfo {
-//             id: None,
-//             amount: Uint128::new(100),
-//             uri: None,
-//         }],
-//         min_liquidities: vec![Uint128::new(100)],
-//         max_token2: vec![TokenInfo {
-//             id: None,
-//             amount: Uint128::new(100),
-//             uri: None,
-//         }],
-//         expiration: None,
-//     };
-//     let err = router
-//         .execute_contract(
-//             owner,
-//             amm_addr,
-//             &add_liquidity_msg,
-//             &[Coin {
-//                 denom: NATIVE_TOKEN_DENOM.into(),
-//                 amount: Uint128::new(100),
-//             }],
-//         )
-//         .unwrap_err();
-//     assert_eq!(ContractError::FrozenPool {}, err.downcast().unwrap());
-// }
+    // now adding liquidity will fail
+    let add_liquidity_msg = ExecuteMsg::AddLiquidity {
+        input_token1: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(100),
+            uri: None,
+        }],
+        min_liquidities: vec![Uint128::new(100)],
+        max_token2: vec![TokenInfo {
+            id: None,
+            amount: Uint128::new(100),
+            uri: None,
+        }],
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(
+            owner,
+            amm_addr,
+            &add_liquidity_msg,
+            &[Coin {
+                denom: NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(100),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(ContractError::FrozenPool {}, err.downcast().unwrap());
+}
 
 #[test]
 fn swap_tokens_happy_path() {
@@ -2148,124 +2227,156 @@ fn swap_with_fee_split() {
     assert_eq!(fee_recipient_balance.amount, Uint128::new(30_000));
 }
 
-// #[test]
-// fn update_config() {
-//     let mut router = mock_app();
+#[test]
+fn contract_state_updates() {
+    let mut router = mock_app();
 
-//     const NATIVE_TOKEN_DENOM: &str = "juno";
+    const NATIVE_TOKEN_DENOM: &str = "juno";
 
-//     let owner = Addr::unchecked("owner");
-//     let funds = coins(2000, NATIVE_TOKEN_DENOM);
-//     router.borrow_mut().init_modules(|router, _, storage| {
-//         router.bank.init_balance(storage, &owner, funds).unwrap()
-//     });
+    let owner = Addr::unchecked("owner");
+    let funds = coins(2000, NATIVE_TOKEN_DENOM);
+    router.borrow_mut().init_modules(|router, _, storage| {
+        router.bank.init_balance(storage, &owner, funds).unwrap()
+    });
 
-//     let cw20_token = create_cw20(
-//         &mut router,
-//         &owner,
-//         "token".to_string(),
-//         "CWTOKEN".to_string(),
-//         Uint128::new(5000),
-//     );
+    let cw20_token = create_cw20(
+        &mut router,
+        &owner,
+        "token".to_string(),
+        "CWTOKEN".to_string(),
+        Uint128::new(5000),
+    );
 
-//     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
-//     let protocol_fee_percent = Decimal::zero();
-//     let amm_addr = create_amm(
-//         &mut router,
-//         &owner,
-//         Denom::Cw20(cw20_token.addr()),
-//         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
-//         Some(TokenSelect::Token1),
-//         Fees {
-//             lp_fee_percent,
-//             protocol_fee_percent,
-//             protocol_fee_recipient: owner.clone(),
-//         },
-//     );
+    let amm_addr = create_amm(
+        &mut router,
+        &owner,
+        Denom::Cw20(cw20_token.addr()),
+        Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        Some(TokenSelect::Token1),
+    );
 
-//     let lp_fee_percent = Decimal::from_str("0.15").unwrap();
-//     let protocol_fee_percent = Decimal::from_str("0.15").unwrap();
-//     let msg = ExecuteMsg::UpdateConfig {
-//         owner: Some(owner.to_string()),
-//         fees: Fees {
-//             lp_fee_percent,
-//             protocol_fee_percent,
-//             protocol_fee_recipient: Addr::unchecked("new_fee_recpient"),
-//         },
-//     };
-//     let _res = router
-//         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-//         .unwrap();
+    let lp_fee_percent = Decimal::from_str("0.15").unwrap();
+    let protocol_fee_percent = Decimal::from_str("0.15").unwrap();
+    let protocol_fee_recipient = "new_fee_recipient";
+    let update_fees_msg = ExecuteMsg::UpdateFees {
+        protocol_fee_recipient: protocol_fee_recipient.to_string(),
+        protocol_fee_percent,
+        lp_fee_percent,
+    };
+    let _res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_fees_msg, &[])
+        .unwrap();
 
-//     let fee = get_fee(&router, &amm_addr);
-//     assert_eq!(fee.protocol_fee_recipient, "new_fee_recpient".to_string());
-//     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
-//     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
-//     assert_eq!(fee.owner.unwrap(), owner.to_string());
+    let fee = get_fee(&router, &amm_addr);
+    assert_eq!(fee.lp_fee_percent, lp_fee_percent);
+    assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
+    assert_eq!(
+        fee.protocol_fee_recipient,
+        protocol_fee_recipient.to_string()
+    );
 
-//     let msg = ExecuteMsg::UpdateConfig {
-//         owner: Some(owner.to_string()),
-//         fees: Fees {
-//             lp_fee_percent: Decimal::from_str("1.01").unwrap(),
-//             protocol_fee_percent: Decimal::zero(),
-//             protocol_fee_recipient: Addr::unchecked("new_fee_recpient"),
-//         },
-//     };
-//     let err = router
-//         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-//         .unwrap_err()
-//         .downcast()
-//         .unwrap();
-//     assert_eq!(
-//         ContractError::FeesTooHigh {
-//             max_fee_percent: Decimal::from_str("1").unwrap(),
-//             total_fee_percent: Decimal::from_str("1.01").unwrap()
-//         },
-//         err
-//     );
+    let update_fees_msg = ExecuteMsg::UpdateFees {
+        protocol_fee_recipient: protocol_fee_recipient.to_string(),
+        protocol_fee_percent: Decimal::zero(),
+        lp_fee_percent: Decimal::from_str("1.01").unwrap(),
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_fees_msg, &[])
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(
+        ContractError::FeesTooHigh {
+            max_fee_percent: Decimal::from_str("1").unwrap(),
+            total_fee_percent: Decimal::from_str("1.01").unwrap()
+        },
+        err
+    );
 
-//     // Try updating config with invalid owner, show throw unauthoritzed error
-//     let lp_fee_percent = Decimal::from_str("0.21").unwrap();
-//     let protocol_fee_percent = Decimal::from_str("0.09").unwrap();
-//     let msg = ExecuteMsg::UpdateConfig {
-//         owner: Some(owner.to_string()),
-//         fees: Fees {
-//             lp_fee_percent,
-//             protocol_fee_percent,
-//             protocol_fee_recipient: owner.clone(),
-//         },
-//     };
-//     let err = router
-//         .execute_contract(
-//             Addr::unchecked("invalid_owner"),
-//             amm_addr.clone(),
-//             &msg,
-//             &[],
-//         )
-//         .unwrap_err()
-//         .downcast()
-//         .unwrap();
-//     assert_eq!(ContractError::Unauthorized {}, err);
+    // Try updating config with invalid owner, show throw unauthoritzed error
+    let lp_fee_percent = Decimal::from_str("0.21").unwrap();
+    let protocol_fee_percent = Decimal::from_str("0.09").unwrap();
+    let update_fees_msg = ExecuteMsg::UpdateFees {
+        protocol_fee_recipient: owner.to_string(),
+        protocol_fee_percent,
+        lp_fee_percent,
+    };
+    let err = router
+        .execute_contract(
+            Addr::unchecked("invalid_owner"),
+            amm_addr.clone(),
+            &update_fees_msg,
+            &[],
+        )
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::Unauthorized {}, err);
 
-//     // Try updating owner and fee params
-//     let msg = ExecuteMsg::UpdateConfig {
-//         owner: Some("new_owner".to_string()),
-//         fees: Fees {
-//             lp_fee_percent,
-//             protocol_fee_percent,
-//             protocol_fee_recipient: owner.clone(),
-//         },
-//     };
-//     let _res = router
-//         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-//         .unwrap();
+    // Try updating owner and fee params
+    let _res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_fees_msg, &[])
+        .unwrap();
 
-//     let fee = get_fee(&router, &amm_addr);
-//     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
-//     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
-//     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
-//     assert_eq!(fee.owner.unwrap(), "new_owner".to_string());
-// }
+    let fee = get_fee(&router, &amm_addr);
+    assert_eq!(fee.protocol_fee_recipient, owner.to_string());
+    assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
+    assert_eq!(fee.lp_fee_percent, lp_fee_percent);
+
+    let config = Config {
+        allowed_denoms: vec!["TEST".to_string()],
+        token_metadata_query_path: "test_path".to_string(),
+    };
+    let update_config_msg = ExecuteMsg::UpdateConfig {
+        config: config.clone(),
+    };
+    let err = router
+        .execute_contract(
+            Addr::unchecked("invalid_owner"),
+            amm_addr.clone(),
+            &update_config_msg,
+            &[],
+        )
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::Unauthorized {}, err);
+
+    let _res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &update_config_msg, &[])
+        .unwrap();
+
+    let updated_config = get_config(&router, &amm_addr).config;
+    assert_eq!(updated_config, config);
+
+    let new_owner = "new_owner";
+    let transfer_ownership_msg = ExecuteMsg::TransferOwnership {
+        owner: new_owner.to_string(),
+    };
+    let err = router
+        .execute_contract(
+            Addr::unchecked(new_owner),
+            amm_addr.clone(),
+            &transfer_ownership_msg,
+            &[],
+        )
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::Unauthorized {}, err);
+
+    let _res = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &transfer_ownership_msg,
+            &[],
+        )
+        .unwrap();
+
+    let info = get_info(&router, &amm_addr);
+    assert_eq!(info.owner, new_owner.to_string());
+}
 
 #[test]
 fn swap_native_to_native_tokens_happy_path() {

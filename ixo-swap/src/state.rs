@@ -22,18 +22,19 @@ pub const TOKEN2: Item<Token> = Item::new("token2");
 pub const OWNER: Item<Addr> = Item::new("owner");
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct Fees {
+pub struct Fee {
     pub protocol_fee_recipient: Addr,
     // NOTE: Fees percents are out of 100 e.g., 1 = 1%
     pub protocol_fee_percent: Decimal,
     pub lp_fee_percent: Decimal,
 }
 
-pub const FEES: Item<Fees> = Item::new("fees");
+pub const FEE: Item<Fee> = Item::new("fee");
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct Config {
     pub allowed_denoms: Vec<String>,
+    pub token_metadata_query_path: String,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");

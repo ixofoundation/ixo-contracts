@@ -1,0 +1,44 @@
+[package]
+name        = "cw-multi-test"
+version     = "0.16.2"
+authors     = ["Ethan Frey <ethanfrey@users.noreply.github.com>"]
+edition     = "2021"
+description = "Test helpers for multi-contract interactions"
+license     = "Apache-2.0"
+repository  = "https://github.com/CosmWasm/cw-multi-test"
+homepage    = "https://cosmwasm.com"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default   = ["iterator", "staking"]
+iterator  = ["cosmwasm-std/iterator"]
+stargate  = ["cosmwasm-std/stargate"]
+staking   = ["cosmwasm-std/staking"]
+backtrace = ["anyhow/backtrace"]
+
+[dependencies]
+cw-utils = "1.0"
+cw-storage-plus = "1.0"
+cosmwasm-std = { version = "1.2", features = [
+    "staking",
+    "stargate",
+    "cosmwasm_1_1",
+] }
+itertools = "0.10.1"
+schemars = "0.8.1"
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+prost = "0.9"
+anyhow = "1.0.41"
+thiserror = "1.0"
+derivative = "2"
+
+# We don't use the following dependencies directly. They're dependencies of our dependencies.
+# We specify them to tighten their version requirements so that builds with `-Zminimal-versions` work.
+# Once we bump `cosmwasm-*` deps to a version after `1.1.5`, we can remove these.
+k256 = { version = "0.11.1", features = ["ecdsa"] }
+
+[dev-dependencies]
+# We don't use the following dependencies directly. They're dependencies of our dependencies.
+# We specify them to tighten their version requirements so that builds with `-Zminimal-versions` work.
+# Once we bump `cosmwasm-*` deps to a version after `1.1.5`, we can remove these.
+serde_json = "1.0.40"

@@ -6,7 +6,7 @@ use cosmwasm_std::{Addr, Decimal, Uint128};
 
 use cw20::Expiration;
 
-use crate::state::{Config, Fees};
+use crate::state::Config;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -100,15 +100,16 @@ pub enum QueryMsg {
         output_tokens: Option<Vec<TokenInfo>>,
     },
     Fee {},
-    Token {
-        token_id: String,
-    },
+    Config {},
 }
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
 pub struct MigrateMsg {
     pub owner: String,
-    pub fees: Fees,
+    pub protocol_fee_recipient: String,
+    pub protocol_fee_percent: Decimal,
+    pub lp_fee_percent: Decimal,
     pub freeze_pool: bool,
+    pub config: Config,
 }
 
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -133,6 +134,7 @@ pub struct QueryTokenMetadataResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InfoResponse {
+    pub owner: String,
     pub token1_reserves: Vec<TokenInfo>,
     pub token1_denom: Denom,
     pub token2_reserves: Vec<TokenInfo>,
@@ -143,7 +145,6 @@ pub struct InfoResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
 pub struct FeeResponse {
-    pub owner: String,
     pub lp_fee_percent: Decimal,
     pub protocol_fee_percent: Decimal,
     pub protocol_fee_recipient: String,
@@ -157,4 +158,9 @@ pub struct Token1ForToken2PriceResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct Token2ForToken1PriceResponse {
     pub token1_amounts: Vec<TokenInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct ConfigResponse {
+    pub config: Config,
 }
