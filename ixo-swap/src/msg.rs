@@ -112,7 +112,7 @@ pub struct MigrateMsg {
     pub config: Config,
 }
 
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
 pub struct QueryTokenMetadataRequest {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
