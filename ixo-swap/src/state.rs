@@ -1,42 +1,31 @@
-use cw1155_lp::TokenInfo;
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Addr, Decimal, Uint128};
+use cw1155::TokenId;
+use cw_storage_plus::{Item, Map};
 
-use cosmwasm_std::{Addr, Decimal};
-use cw_storage_plus::Item;
+use crate::msg::Denom;
 
-use crate::msg::{Denom, TokenSelect};
+pub const LP_ADDRESS: Item<Addr> = Item::new("lp_token");
+pub const LP_TOKENS: Map<(Addr, TokenId), Uint128> = Map::new("lp_tokens");
 
-pub const LP_TOKEN_ADDRESS: Item<Addr> = Item::new("lp_token_address");
-pub const LP_TOKEN: Item<Option<TokenSelect>> = Item::new("lp_token");
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[cw_serde]
 pub struct Token {
-    pub reserves: Vec<TokenInfo>,
+    pub reserve: Uint128,
     pub denom: Denom,
 }
 
 pub const TOKEN1: Item<Token> = Item::new("token1");
 pub const TOKEN2: Item<Token> = Item::new("token2");
 
-pub const OWNER: Item<Addr> = Item::new("owner");
+pub const OWNER: Item<Option<Addr>> = Item::new("owner");
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct Fee {
+#[cw_serde]
+pub struct Fees {
     pub protocol_fee_recipient: Addr,
-    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
     pub protocol_fee_percent: Decimal,
     pub lp_fee_percent: Decimal,
 }
 
-pub const FEE: Item<Fee> = Item::new("fee");
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
-pub struct Config {
-    pub allowed_denoms: Vec<String>,
-    pub token_metadata_query_path: String,
-}
-
-pub const CONFIG: Item<Config> = Item::new("config");
+pub const FEES: Item<Fees> = Item::new("fees");
 
 pub const FROZEN: Item<bool> = Item::new("frozen");

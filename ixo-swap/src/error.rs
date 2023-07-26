@@ -46,9 +46,6 @@ pub enum ContractError {
         available: Uint128,
     },
 
-    #[error("Token with id: {id} has unsupported denom")]
-    UnsupportedTokenDenom { id: String },
-
     #[error("Incorrect native denom: provided: {provided}, required: {required}")]
     IncorrectNativeDenom { provided: String, required: String },
 
@@ -64,9 +61,6 @@ pub enum ContractError {
         total_fee_percent: Decimal,
     },
 
-    #[error("Config must be set")]
-    UnsetConfig {},
-
     #[error("InsufficientFunds")]
     InsufficientFunds {},
 
@@ -79,6 +73,12 @@ pub enum ContractError {
     #[error("The output amm provided is invalid")]
     InvalidOutputPool {},
 
+    #[error("Unauthorized pool freeze - sender is not an owner or owner has not been set")]
+    UnauthorizedPoolFreeze {},
+
     #[error("This pools is frozen - you can not deposit or swap tokens")]
     FrozenPool {},
+
+    #[error("Token with id: {id} has unsupported denom")]
+    UnsupportedTokenDenom { id: String },
 }

@@ -1,115 +1,142 @@
-use cw1155_lp::TokenInfo;
-use schemars::JsonSchema;
+use cosmwasm_schema::{cw_serde, QueryResponses};
+use cosmwasm_std::{Addr, Decimal, Uint128};
+use cw1155::TokenId;
+use cw20::{BalanceResponse, Expiration};
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Decimal, Uint128};
-
-use cw20::Expiration;
-
-use crate::state::Config;
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[cw_serde]
 pub struct InstantiateMsg {
     pub token1_denom: Denom,
     pub token2_denom: Denom,
-    pub lp_token: Option<TokenSelect>,
     pub lp_token_code_id: u64,
-    pub owner: String,
+    pub owner: Option<String>,
+    pub protocol_fee_recipient: String,
+    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
+    pub protocol_fee_percent: Decimal,
+    pub lp_fee_percent: Decimal,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum Denom {
     Native(String),
     Cw20(Addr),
-    Cw1155(Addr),
+    Cw1155(Addr, String),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+#[cw_serde]
 pub enum TokenSelect {
-    Token1,
+    Token1155,
     Token2,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
 pub enum ExecuteMsg {
     AddLiquidity {
-        input_token1: Vec<TokenInfo>,
-        max_token2: Vec<TokenInfo>,
-        min_liquidities: Vec<Uint128>,
+        token1155_amounts: Vec<(TokenId, Uint128)>,
+        min_liquidity: Uint128,
+        max_token2: Uint128,
         expiration: Option<Expiration>,
     },
     RemoveLiquidity {
-        input_amounts: Vec<Uint128>,
-        min_token1: Vec<TokenInfo>,
-        min_token2: Vec<TokenInfo>,
+        amount: Uint128,
+        min_token1: Uint128,
+        min_token2: Uint128,
         expiration: Option<Expiration>,
     },
     Swap {
-        input_token_select: TokenSelect,
-        input_tokens: Vec<TokenInfo>,
-        output_min_tokens: Vec<TokenInfo>,
+        input_token: TokenSelect,
+        input_amount: Uint128,
+        min_output: Uint128,
         expiration: Option<Expiration>,
     },
     /// Chained swap converting A -> B and B -> C by leveraging two swap contracts
     PassThroughSwap {
         output_amm_address: String,
-        input_token_select: TokenSelect,
-        input_tokens: Vec<TokenInfo>,
-        output_min_tokens: Vec<TokenInfo>,
+        input_token: TokenSelect,
+        input_token_amount: Uint128,
+        output_min_token: Uint128,
         expiration: Option<Expiration>,
     },
     SwapAndSendTo {
-        input_token_select: TokenSelect,
-        input_tokens: Vec<TokenInfo>,
-        output_min_tokens: Vec<TokenInfo>,
+        input_token: TokenSelect,
+        input_amount: Uint128,
         recipient: String,
+        min_token: Uint128,
         expiration: Option<Expiration>,
     },
-    UpdateFees {
-        protocol_fee_recipient: String,
-        protocol_fee_percent: Decimal,
-        lp_fee_percent: Decimal,
-    },
     UpdateConfig {
-        config: Config,
+        owner: Option<String>,
+        lp_fee_percent: Decimal,
+        protocol_fee_percent: Decimal,
+        protocol_fee_recipient: String,
     },
-    TransferOwnership {
-        owner: String,
-    },
+    // Freeze adding new deposits
     FreezeDeposits {
         freeze: bool,
     },
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-#[serde(rename_all = "snake_case")]
+#[cw_serde]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     /// Implements CW20. Returns the current balance of the given address, 0 if unset.
-    Balance {
-        address: String,
-    },
+    #[returns(BalanceResponse)]
+    Balance { address: String },
+    #[returns(InfoResponse)]
     Info {},
-    Token1ForToken2Price {
-        input_tokens: Vec<TokenInfo>,
-        output_tokens: Option<Vec<TokenInfo>>,
-    },
-    Token2ForToken1Price {
-        input_tokens: Vec<TokenInfo>,
-        output_tokens: Option<Vec<TokenInfo>>,
-    },
+    #[returns(Token1ForToken2PriceResponse)]
+    Token1ForToken2Price { token1_amount: Uint128 },
+    #[returns(Token2ForToken1PriceResponse)]
+    Token2ForToken1Price { token2_amount: Uint128 },
+    #[returns(FeeResponse)]
     Fee {},
-    Config {},
+    #[returns(OwnerLpTokensBalanceResponse)]
+    OwnerLpTokensBalance {
+        owner: String,
+        tokens_id: Vec<TokenId>,
+    },
 }
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, JsonSchema)]
+
+#[cw_serde]
 pub struct MigrateMsg {
-    pub owner: String,
+    pub owner: Option<String>,
     pub protocol_fee_recipient: String,
     pub protocol_fee_percent: Decimal,
     pub lp_fee_percent: Decimal,
     pub freeze_pool: bool,
-    pub config: Config,
+}
+
+#[cw_serde]
+pub struct InfoResponse {
+    pub token1_reserve: Uint128,
+    pub token1_denom: Denom,
+    pub token2_reserve: Uint128,
+    pub token2_denom: Denom,
+    pub lp_token_supply: Uint128,
+    pub lp_token_address: String,
+}
+
+#[cw_serde]
+pub struct FeeResponse {
+    pub owner: Option<String>,
+    pub lp_fee_percent: Decimal,
+    pub protocol_fee_percent: Decimal,
+    pub protocol_fee_recipient: String,
+}
+
+#[cw_serde]
+pub struct Token1ForToken2PriceResponse {
+    pub token2_amount: Uint128,
+}
+
+#[cw_serde]
+pub struct Token2ForToken1PriceResponse {
+    pub token1_amount: Uint128,
+}
+
+#[cw_serde]
+pub struct OwnerLpTokensBalanceResponse {
+    pub balances: Vec<Uint128>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
@@ -130,37 +157,4 @@ pub struct QueryTokenMetadataResponse {
     pub image: ::prost::alloc::string::String,
     #[prost(string, tag = "5")]
     pub index: ::prost::alloc::string::String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InfoResponse {
-    pub owner: String,
-    pub token1_reserves: Vec<TokenInfo>,
-    pub token1_denom: Denom,
-    pub token2_reserves: Vec<TokenInfo>,
-    pub token2_denom: Denom,
-    pub lp_token_supplies: Vec<TokenInfo>,
-    pub lp_token_address: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq, JsonSchema)]
-pub struct FeeResponse {
-    pub lp_fee_percent: Decimal,
-    pub protocol_fee_percent: Decimal,
-    pub protocol_fee_recipient: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Token1ForToken2PriceResponse {
-    pub token2_amounts: Vec<TokenInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct Token2ForToken1PriceResponse {
-    pub token1_amounts: Vec<TokenInfo>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct ConfigResponse {
-    pub config: Config,
 }
