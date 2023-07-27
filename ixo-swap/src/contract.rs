@@ -667,6 +667,13 @@ pub fn execute_remove_liquidity(
                 available: available_amount,
             });
         }
+        if lp_token_amount < available_amount {
+            return Err(ContractError::InsufficientLiquidityTokenReserveError {
+                token_id: token_id.clone(),
+                reserved: lp_token_amount,
+                needed: available_amount,
+            });
+        }
 
         let remaining_amount = lp_token_amount - available_amount;
         if remaining_amount.is_zero() {

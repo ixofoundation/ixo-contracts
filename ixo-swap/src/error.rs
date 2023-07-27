@@ -35,6 +35,13 @@ pub enum ContractError {
         available: Uint128,
     },
 
+    #[error("Insufficient liquidity token reserve error: token ID: {token_id}, reserved: {reserved}, needed: {needed}")]
+    InsufficientLiquidityTokenReserveError {
+        token_id: TokenId,
+        reserved: Uint128,
+        needed: Uint128,
+    },
+
     #[error(
         "Min token1155 error: token ID: {token_id}, requested: {requested}, available: {available}"
     )]
