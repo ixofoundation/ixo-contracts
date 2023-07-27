@@ -1,5 +1,4 @@
 use cosmwasm_std::{Decimal, StdError, Uint128};
-use cw1155::TokenId;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -35,18 +34,8 @@ pub enum ContractError {
         available: Uint128,
     },
 
-    #[error("Insufficient liquidity token reserve error: token ID: {token_id}, reserved: {reserved}, needed: {needed}")]
-    InsufficientLiquidityTokenReserveError {
-        token_id: TokenId,
-        reserved: Uint128,
-        needed: Uint128,
-    },
-
-    #[error(
-        "Min token1155 error: token ID: {token_id}, requested: {requested}, available: {available}"
-    )]
+    #[error("Min token1155 error: requested: {requested}, available: {available}")]
     MinToken1155Error {
-        token_id: TokenId,
         requested: Uint128,
         available: Uint128,
     },

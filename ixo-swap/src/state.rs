@@ -6,8 +6,6 @@ use cw_storage_plus::{Item, Map};
 use crate::msg::Denom;
 
 pub const LP_ADDRESS: Item<Addr> = Item::new("lp_token");
-pub const LP_TOKENS: Map<(Addr, TokenId), Uint128> = Map::new("lp_tokens");
-pub const LP_SUPPLIES: Map<TokenId, Uint128> = Map::new("lp_supplies");
 
 #[cw_serde]
 pub struct Token {
@@ -17,6 +15,7 @@ pub struct Token {
 
 pub const TOKEN1155: Item<Token> = Item::new("token1155");
 pub const TOKEN2: Item<Token> = Item::new("token2");
+pub const TOKEN_SUPPLIES: Map<TokenId, Uint128> = Map::new("lp_supplies");
 
 pub const OWNER: Item<Option<Addr>> = Item::new("owner");
 

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw1155::TokenId;
@@ -32,14 +34,14 @@ pub enum TokenSelect {
 #[cw_serde]
 pub enum ExecuteMsg {
     AddLiquidity {
-        token1155_amounts: Vec<(TokenId, Uint128)>,
+        token1155_amounts: HashMap<TokenId, Uint128>,
         min_liquidity: Uint128,
         max_token2: Uint128,
         expiration: Option<Expiration>,
     },
     RemoveLiquidity {
         amount: Uint128,
-        min_token1155: Vec<(TokenId, Uint128)>,
+        min_token1155: HashMap<TokenId, Uint128>,
         min_token2: Uint128,
         expiration: Option<Expiration>,
     },
@@ -90,11 +92,8 @@ pub enum QueryMsg {
     Token2ForToken1Price { token2_amount: Uint128 },
     #[returns(FeeResponse)]
     Fee {},
-    #[returns(OwnerLpTokensBalanceResponse)]
-    OwnerLpTokensBalance {
-        owner: String,
-        tokens_id: Vec<TokenId>,
-    },
+    #[returns(TokenSuppliesResponse)]
+    TokenSupplies { tokens_id: Vec<TokenId> },
 }
 
 #[cw_serde]
@@ -135,8 +134,8 @@ pub struct Token2ForToken1PriceResponse {
 }
 
 #[cw_serde]
-pub struct OwnerLpTokensBalanceResponse {
-    pub balances: Vec<Uint128>,
+pub struct TokenSuppliesResponse {
+    pub supplies: Vec<Uint128>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
