@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
     },
     RemoveLiquidity {
         amount: Uint128,
-        min_token1: Uint128,
+        min_token1155: Vec<(TokenId, Uint128)>,
         min_token2: Uint128,
         expiration: Option<Expiration>,
     },

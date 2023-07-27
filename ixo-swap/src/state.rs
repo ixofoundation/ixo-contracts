@@ -7,6 +7,7 @@ use crate::msg::Denom;
 
 pub const LP_ADDRESS: Item<Addr> = Item::new("lp_token");
 pub const LP_TOKENS: Map<(Addr, TokenId), Uint128> = Map::new("lp_tokens");
+pub const LP_SUPPLIES: Map<TokenId, Uint128> = Map::new("lp_supplies");
 
 #[cw_serde]
 pub struct Token {
@@ -14,7 +15,7 @@ pub struct Token {
     pub denom: Denom,
 }
 
-pub const TOKEN1: Item<Token> = Item::new("token1");
+pub const TOKEN1155: Item<Token> = Item::new("token1155");
 pub const TOKEN2: Item<Token> = Item::new("token2");
 
 pub const OWNER: Item<Option<Addr>> = Item::new("owner");

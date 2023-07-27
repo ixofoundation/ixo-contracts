@@ -19,7 +19,9 @@ use crate::msg::{
     OwnerLpTokensBalanceResponse, QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse,
     Token1ForToken2PriceResponse, Token2ForToken1PriceResponse, TokenSelect,
 };
-use crate::state::{Fees, Token, FEES, FROZEN, LP_ADDRESS, LP_TOKENS, OWNER, TOKEN1, TOKEN2};
+use crate::state::{
+    Fees, Token, FEES, FROZEN, LP_ADDRESS, LP_SUPPLIES, LP_TOKENS, OWNER, TOKEN1155, TOKEN2,
+};
 
 // Version info for migration info
 pub const CONTRACT_NAME: &str = "crates.io:wasmswap";
@@ -42,11 +44,11 @@ pub fn instantiate(
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
-    let token1 = Token {
-        reserve: Uint128::zero(),
+    let token1155 = Token {
         denom: msg.token1_denom.clone(),
+        reserve: Uint128::zero(),
     };
-    TOKEN1.save(deps.storage, &token1)?;
+    TOKEN1155.save(deps.storage, &token1155)?;
 
     let token2 = Token {
         denom: msg.token2_denom.clone(),
@@ -131,10 +133,18 @@ pub fn execute(
         }
         ExecuteMsg::RemoveLiquidity {
             amount,
-            min_token1,
+            min_token1155,
             min_token2,
             expiration,
-        } => execute_remove_liquidity(deps, info, env, amount, min_token1, min_token2, expiration),
+        } => execute_remove_liquidity(
+            deps,
+            info,
+            env,
+            amount,
+            min_token1155,
+            min_token2,
+            expiration,
+        ),
         ExecuteMsg::Swap {
             input_token,
             input_amount,
@@ -294,11 +304,11 @@ pub fn execute_add_liquidity(
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &env.block)?;
 
-    let token1 = TOKEN1.load(deps.storage)?;
+    let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_addr = LP_ADDRESS.load(deps.storage)?;
 
-    validate_token1155_denom(&deps, &token1.denom, &token1155_amounts)?;
+    validate_token1155_denom(&deps, &token1155.denom, &token1155_amounts)?;
     validate_input_amount(&info.funds, max_token2, &token2.denom)?;
 
     let token1155_total_amount = token1155_amounts
@@ -309,14 +319,14 @@ pub fn execute_add_liquidity(
         .unwrap();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
-        get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1.reserve)?;
+        get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
 
     let token2_amount = get_token2_amount_required(
         max_token2,
         token1155_total_amount,
         lp_token_supply,
         token2.reserve,
-        token1.reserve,
+        token1155.reserve,
     )?;
 
     if liquidity_amount < min_liquidity {
@@ -335,7 +345,7 @@ pub fn execute_add_liquidity(
 
     // Generate cw20 transfer messages if necessary
     let mut transfer_msgs: Vec<CosmosMsg> = vec![];
-    if let Denom::Cw1155(addr, _) = token1.denom {
+    if let Denom::Cw1155(addr, _) = token1155.denom {
         transfer_msgs.push(get_cw1155_transfer_msg(
             &info.sender,
             &env.contract.address,
@@ -363,7 +373,7 @@ pub fn execute_add_liquidity(
         }
     }
 
-    TOKEN1.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    TOKEN1155.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve += token1155_total_amount;
         Ok(token)
     })?;
@@ -375,10 +385,20 @@ pub fn execute_add_liquidity(
     for (token_id, token_amount) in token1155_amounts.into_iter() {
         LP_TOKENS.update(
             deps.storage,
-            (info.sender.clone(), token_id),
+            (info.sender.clone(), token_id.clone()),
             |lp_token_amount| -> Result<_, ContractError> {
                 match lp_token_amount {
                     Some(lp_token_amount) => Ok(lp_token_amount + token_amount),
+                    None => Ok(token_amount),
+                }
+            },
+        )?;
+        LP_SUPPLIES.update(
+            deps.storage,
+            token_id.clone(),
+            |lp_token_supply| -> Result<_, ContractError> {
+                match lp_token_supply {
+                    Some(lp_token_supply) => Ok(lp_token_supply + token_amount),
                     None => Ok(token_amount),
                 }
             },
@@ -595,7 +615,7 @@ pub fn execute_remove_liquidity(
     info: MessageInfo,
     env: Env,
     amount: Uint128,
-    min_token1: Uint128,
+    min_token1155: Vec<(TokenId, Uint128)>,
     min_token2: Uint128,
     expiration: Option<Expiration>,
 ) -> Result<Response, ContractError> {
@@ -603,8 +623,8 @@ pub fn execute_remove_liquidity(
 
     let lp_token_addr = LP_ADDRESS.load(deps.storage)?;
     let balance = get_token_balance(deps.as_ref(), &lp_token_addr, &info.sender)?;
-    let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
-    let token1 = TOKEN1.load(deps.storage)?;
+    let lp_token_total_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
+    let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     if amount > balance {
@@ -614,22 +634,10 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    let token1_amount = amount
-        .checked_mul(token1.reserve)
-        .map_err(StdError::overflow)?
-        .checked_div(lp_token_supply)
-        .map_err(StdError::divide_by_zero)?;
-    if token1_amount < min_token1 {
-        return Err(ContractError::MinToken1Error {
-            requested: min_token1,
-            available: token1_amount,
-        });
-    }
-
     let token2_amount = amount
         .checked_mul(token2.reserve)
         .map_err(StdError::overflow)?
-        .checked_div(lp_token_supply)
+        .checked_div(lp_token_total_supply)
         .map_err(StdError::divide_by_zero)?;
     if token2_amount < min_token2 {
         return Err(ContractError::MinToken2Error {
@@ -638,10 +646,60 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    TOKEN1.update(deps.storage, |mut token1| -> Result<_, ContractError> {
+    let mut token1155_amounts = min_token1155.clone();
+    for (token_id, requested_amount) in token1155_amounts.iter_mut() {
+        let lp_token_amount = LP_TOKENS
+            .may_load(deps.storage, (info.sender.clone(), token_id.clone()))?
+            .unwrap_or_default();
+        let lp_token_supply = LP_SUPPLIES
+            .may_load(deps.storage, token_id.clone())?
+            .unwrap_or_default();
+
+        let available_amount = amount
+            .checked_mul(lp_token_supply)
+            .map_err(StdError::overflow)?
+            .checked_div(lp_token_total_supply)
+            .map_err(StdError::divide_by_zero)?;
+        if available_amount < requested_amount.clone() {
+            return Err(ContractError::MinToken1155Error {
+                token_id: token_id.clone(),
+                requested: requested_amount.clone(),
+                available: available_amount,
+            });
+        }
+
+        let remaining_amount = lp_token_amount - available_amount;
+        if remaining_amount.is_zero() {
+            LP_TOKENS.remove(deps.storage, (info.sender.clone(), token_id.clone()));
+        } else {
+            LP_TOKENS.save(
+                deps.storage,
+                (info.sender.clone(), token_id.clone()),
+                &remaining_amount,
+            )?;
+        }
+
+        let remaining_supply = lp_token_supply - available_amount;
+        if remaining_amount.is_zero() {
+            LP_SUPPLIES.remove(deps.storage, token_id.clone());
+        } else {
+            LP_SUPPLIES.save(deps.storage, token_id.clone(), &remaining_supply)?;
+        }
+
+        *requested_amount = available_amount
+    }
+
+    let token1155_total_amount = token1155_amounts
+        .to_vec()
+        .into_iter()
+        .map(|(_, amount)| amount)
+        .reduce(|acc, e| acc + e)
+        .unwrap();
+
+    TOKEN1155.update(deps.storage, |mut token1| -> Result<_, ContractError> {
         token1.reserve = token1
             .reserve
-            .checked_sub(token1_amount)
+            .checked_sub(token1155_total_amount)
             .map_err(StdError::overflow)?;
         Ok(token1)
     })?;
@@ -654,30 +712,37 @@ pub fn execute_remove_liquidity(
         Ok(token2)
     })?;
 
-    let token1_transfer_msg = match token1.denom {
-        Denom::Cw1155(..) => unimplemented!(),
-        Denom::Cw20(addr) => get_cw20_transfer_to_msg(&info.sender, &addr, token1_amount)?,
-        Denom::Native(denom) => get_bank_transfer_to_msg(&info.sender, &denom, token1_amount),
-    };
-    let token2_transfer_msg = match token2.denom {
-        Denom::Cw1155(..) => unimplemented!(),
-        Denom::Cw20(addr) => get_cw20_transfer_to_msg(&info.sender, &addr, token2_amount)?,
-        Denom::Native(denom) => get_bank_transfer_to_msg(&info.sender, &denom, token2_amount),
+    let mut msgs: Vec<CosmosMsg> = vec![];
+    if let Denom::Cw1155(addr, _) = token1155.denom {
+        msgs.push(get_cw1155_transfer_msg(
+            &env.contract.address,
+            &info.sender,
+            &addr,
+            &token1155_amounts,
+        )?)
     };
 
-    let lp_token_burn_msg = get_burn_msg(&lp_token_addr, &info.sender, amount)?;
+    match token2.denom {
+        Denom::Cw20(addr) => msgs.push(get_cw20_transfer_to_msg(
+            &info.sender,
+            &addr,
+            token2_amount,
+        )?),
+        Denom::Native(denom) => msgs.push(get_bank_transfer_to_msg(
+            &info.sender,
+            &denom,
+            token2_amount,
+        )),
+        _ => {}
+    };
 
-    Ok(Response::new()
-        .add_messages(vec![
-            token1_transfer_msg,
-            token2_transfer_msg,
-            lp_token_burn_msg,
-        ])
-        .add_attributes(vec![
-            attr("liquidity_burned", amount),
-            attr("token1_returned", token1_amount),
-            attr("token2_returned", token2_amount),
-        ]))
+    msgs.push(get_burn_msg(&lp_token_addr, &info.sender, amount)?);
+
+    Ok(Response::new().add_messages(msgs).add_attributes(vec![
+        attr("liquidity_burned", amount),
+        attr("token1_returned", token1155_total_amount),
+        attr("token2_returned", token2_amount),
+    ]))
 }
 
 fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
@@ -814,13 +879,13 @@ pub fn execute_swap(
     check_expiration(&expiration, &_env.block)?;
 
     let input_token_item = match input_token_enum {
-        TokenSelect::Token1155 => TOKEN1,
+        TokenSelect::Token1155 => TOKEN1155,
         TokenSelect::Token2 => TOKEN2,
     };
     let input_token = input_token_item.load(deps.storage)?;
     let output_token_item = match input_token_enum {
         TokenSelect::Token1155 => TOKEN2,
-        TokenSelect::Token2 => TOKEN1,
+        TokenSelect::Token2 => TOKEN1155,
     };
     let output_token = output_token_item.load(deps.storage)?;
 
@@ -917,13 +982,13 @@ pub fn execute_pass_through_swap(
     check_expiration(&expiration, &_env.block)?;
 
     let input_token_state = match input_token_enum {
-        TokenSelect::Token1155 => TOKEN1,
+        TokenSelect::Token1155 => TOKEN1155,
         TokenSelect::Token2 => TOKEN2,
     };
     let input_token = input_token_state.load(deps.storage)?;
     let transfer_token_state = match input_token_enum {
         TokenSelect::Token1155 => TOKEN2,
-        TokenSelect::Token2 => TOKEN1,
+        TokenSelect::Token2 => TOKEN1155,
     };
     let transfer_token = transfer_token_state.load(deps.storage)?;
 
@@ -1077,14 +1142,14 @@ pub fn query_owner_lp_tokens_balance(
 }
 
 pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
-    let token1 = TOKEN1.load(deps.storage)?;
+    let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_address = LP_ADDRESS.load(deps.storage)?;
 
     // TODO get total supply
     Ok(InfoResponse {
-        token1_reserve: token1.reserve,
-        token1_denom: token1.denom,
+        token1_reserve: token1155.reserve,
+        token1_denom: token1155.denom,
         token2_reserve: token2.reserve,
         token2_denom: token2.denom,
         lp_token_supply: get_lp_token_supply(deps, &lp_token_address)?,
@@ -1096,14 +1161,14 @@ pub fn query_token1_for_token2_price(
     deps: Deps,
     token1_amount: Uint128,
 ) -> StdResult<Token1ForToken2PriceResponse> {
-    let token1 = TOKEN1.load(deps.storage)?;
+    let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token2_amount = get_input_price(
         token1_amount,
-        token1.reserve,
+        token1155.reserve,
         token2.reserve,
         total_fee_percent,
     )?;
@@ -1114,7 +1179,7 @@ pub fn query_token2_for_token1_price(
     deps: Deps,
     token2_amount: Uint128,
 ) -> StdResult<Token2ForToken1PriceResponse> {
-    let token1 = TOKEN1.load(deps.storage)?;
+    let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
@@ -1122,7 +1187,7 @@ pub fn query_token2_for_token1_price(
     let token1_amount = get_input_price(
         token2_amount,
         token2.reserve,
-        token1.reserve,
+        token1155.reserve,
         total_fee_percent,
     )?;
     Ok(Token2ForToken1PriceResponse { token1_amount })

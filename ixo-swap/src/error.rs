@@ -1,4 +1,5 @@
 use cosmwasm_std::{Decimal, StdError, Uint128};
+use cw1155::TokenId;
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -34,8 +35,11 @@ pub enum ContractError {
         available: Uint128,
     },
 
-    #[error("Min token1 error: requested: {requested}, available: {available}")]
-    MinToken1Error {
+    #[error(
+        "Min token1155 error: token ID: {token_id}, requested: {requested}, available: {available}"
+    )]
+    MinToken1155Error {
+        token_id: TokenId,
         requested: Uint128,
         available: Uint128,
     },
