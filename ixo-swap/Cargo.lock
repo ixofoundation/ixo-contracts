@@ -544,6 +544,7 @@ name = "ixoswap"
 version = "1.2.0"
 dependencies = [
  "anyhow",
+ "base64ct",
  "cosmwasm-schema",
  "cosmwasm-std",
  "cosmwasm-storage",
@@ -557,6 +558,7 @@ dependencies = [
  "cw20-base",
  "prost 0.11.9",
  "serde",
+ "sha2 0.10.7",
  "thiserror",
 ]
 

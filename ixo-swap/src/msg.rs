@@ -32,6 +32,32 @@ pub enum TokenSelect {
 }
 
 #[cw_serde]
+pub enum TokenAmount {
+    Token1155(HashMap<TokenId, Uint128>),
+    Token2(Uint128),
+}
+
+impl TokenAmount {
+    pub fn get_token1155(&self) -> HashMap<TokenId, Uint128> {
+        match self {
+            TokenAmount::Token1155(amount) => amount.clone(),
+            TokenAmount::Token2(e) => {
+                panic!("{}: {:?}", "Incompatible amount", &e)
+            }
+        }
+    }
+
+    pub fn get_token2(&self) -> Uint128 {
+        match self {
+            TokenAmount::Token2(amount) => amount.clone(),
+            TokenAmount::Token1155(e) => {
+                panic!("{}: {:?}", "Incompatible amount", &e)
+            }
+        }
+    }
+}
+
+#[cw_serde]
 pub enum ExecuteMsg {
     AddLiquidity {
         token1155_amounts: HashMap<TokenId, Uint128>,
@@ -47,23 +73,23 @@ pub enum ExecuteMsg {
     },
     Swap {
         input_token: TokenSelect,
-        input_amount: Uint128,
-        min_output: Uint128,
+        input_amount: TokenAmount,
+        min_output: TokenAmount,
         expiration: Option<Expiration>,
     },
     /// Chained swap converting A -> B and B -> C by leveraging two swap contracts
     PassThroughSwap {
         output_amm_address: String,
         input_token: TokenSelect,
-        input_token_amount: Uint128,
-        output_min_token: Uint128,
+        input_token_amount: TokenAmount,
+        output_min_token: TokenAmount,
         expiration: Option<Expiration>,
     },
     SwapAndSendTo {
         input_token: TokenSelect,
-        input_amount: Uint128,
+        input_amount: TokenAmount,
         recipient: String,
-        min_token: Uint128,
+        min_token: TokenAmount,
         expiration: Option<Expiration>,
     },
     UpdateConfig {

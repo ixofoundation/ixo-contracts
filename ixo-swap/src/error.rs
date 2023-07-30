@@ -81,4 +81,7 @@ pub enum ContractError {
 
     #[error("Token with id: {id} has unsupported denom")]
     UnsupportedTokenDenom { id: String },
+
+    #[error("Invalid seed")]
+    InvalidSeed { seed: String },
 }
