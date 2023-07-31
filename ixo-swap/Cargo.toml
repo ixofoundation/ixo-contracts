@@ -2,7 +2,7 @@
 name = "ixoswap"
 version = "1.2.0"
 authors = ["ben2x4 <ben2x4@protonmail.com>"]
-edition = "2021"
+edition = "2018"
 description = "Cosmwasm AMM"
 license = "Apache-2.0"
 repository = "https://github.com/Wasmswap/wasmswap-contracts"
@@ -37,8 +37,8 @@ library = []
 
 [dependencies]
 cw-utils = { version = "1.0.1" }
-cw1155-base = { path = "../ixo-plus/contracts/cw1155-base", version = "0.16.0" }
-cw1155 = { path = "../ixo-plus/packages/cw1155", version = "0.16.0" }
+cw1155-base = { git = "https://github.com/ixofoundation/ixo-contracts.git", branch = "master", version = "0.16.0" }
+cw1155 = { git = "https://github.com/ixofoundation/ixo-contracts.git", branch = "master", version = "0.16.0" }
 cw2 = { version = "1.1.0" }
 cw20 = { version = "1.1.0" }
 cw20-base = { version = "1.1.0", features = ["library"] }

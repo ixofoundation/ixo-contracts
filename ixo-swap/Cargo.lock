@@ -225,6 +225,7 @@ dependencies = [
 [[package]]
 name = "cw-storage-plus"
 version = "0.16.0"
+source = "git+https://github.com/ixofoundation/ixo-contracts.git?branch=master#47d921f481b3fa6b0209960a8f1bd9845292dad9"
 dependencies = [
  "cosmwasm-std",
  "schemars",
@@ -245,6 +246,7 @@ dependencies = [
 [[package]]
 name = "cw-utils"
 version = "0.16.0"
+source = "git+https://github.com/ixofoundation/ixo-contracts.git?branch=master#47d921f481b3fa6b0209960a8f1bd9845292dad9"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -273,6 +275,7 @@ dependencies = [
 [[package]]
 name = "cw1155"
 version = "0.16.0"
+source = "git+https://github.com/ixofoundation/ixo-contracts.git?branch=master#47d921f481b3fa6b0209960a8f1bd9845292dad9"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -284,6 +287,7 @@ dependencies = [
 [[package]]
 name = "cw1155-base"
 version = "0.16.0"
+source = "git+https://github.com/ixofoundation/ixo-contracts.git?branch=master#47d921f481b3fa6b0209960a8f1bd9845292dad9"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -299,6 +303,7 @@ dependencies = [
 [[package]]
 name = "cw2"
 version = "0.16.0"
+source = "git+https://github.com/ixofoundation/ixo-contracts.git?branch=master#47d921f481b3fa6b0209960a8f1bd9845292dad9"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
