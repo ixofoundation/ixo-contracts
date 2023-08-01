@@ -29,10 +29,17 @@ In order to instantiate the contract, we should send an appropriate message to t
 
 <br/>
 
-For instantiation we need to provide two tokens with one of supported `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> for each.<br/>
-`Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> needs a denom of token.<br/>
-`Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> needs an address of existing cw20 contract.<br/>
-`Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> needs and address of existing cw1155 contract and supported denom of token.
+### Denom
+
+<br/>
+
+For instantiation we need to provide two tokens with one of supported `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> for each.
+
+*   `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> needs a denom of token.
+
+*   `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> needs an address of existing cw20 contract.
+
+*   `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> needs and address of existing cw1155 contract and supported denom of token.
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -45,7 +52,17 @@ For instantiation we need to provide two tokens with one of supported `Denom`<sw
 
 <br/>
 
-## Example:
+### Fee
+
+While instantiating, we need to specify 3 field for fee.
+
+*   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:18:3:3:`    pub lp_fee_percent: Decimal,`"/>\- a contract fee percent for every swap. Basicly, the higher the percentage, the less a person who swap will receive.
+
+*   `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:17:3:3:`    pub protocol_fee_percent: Decimal,`"/> - a fee that sends to `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:15:3:3:`    pub protocol_fee_recipient: String,`"/> for every swap. This value is not taken from `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:18:3:3:`    pub lp_fee_percent: Decimal,`"/> and is calculated separatly.
+
+*   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:15:3:3:`    pub protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:17:3:3:`    pub protocol_fee_percent: Decimal,`"/>for every swap.
+
+### Example
 
 > {
 > 
