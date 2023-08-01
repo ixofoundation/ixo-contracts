@@ -48,7 +48,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     let token1155 = Token {
-        denom: msg.token1_denom.clone(),
+        denom: msg.token1155_denom.clone(),
         reserve: Uint128::zero(),
     };
     TOKEN1155.save(deps.storage, &token1155)?;

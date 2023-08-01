@@ -116,7 +116,7 @@ fn get_owner_lp_tokens_balance(
 fn create_amm(
     router: &mut App,
     owner: &Addr,
-    token1_denom: Denom,
+    token1155_denom: Denom,
     token2_denom: Denom,
     lp_fee_percent: Decimal,
     protocol_fee_percent: Decimal,
@@ -126,7 +126,7 @@ fn create_amm(
     let cw20_id = router.store_code(contract_cw20());
     let amm_id = router.store_code(contract_amm());
     let msg = InstantiateMsg {
-        token1_denom,
+        token1155_denom,
         token2_denom,
         lp_token_code_id: cw20_id,
         owner: Some(owner.to_string()),
@@ -247,8 +247,8 @@ fn test_instantiate() {
     let cw20_id = router.store_code(contract_cw20());
     let amm_id = router.store_code(contract_amm());
     let msg = InstantiateMsg {
-        token2_denom: Denom::Cw1155(cw1155_token, supported_denom.clone()),
-        token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token1155_denom: Denom::Cw1155(cw1155_token, supported_denom.clone()),
+        token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         lp_token_code_id: cw20_id,
         owner: Some(owner.to_string()),
         lp_fee_percent,
@@ -1277,7 +1277,7 @@ fn migrate() {
     let owner = Addr::unchecked("owner");
 
     let msg = InstantiateMsg {
-        token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
         lp_token_code_id: lp_token_id,
         owner: Some(owner.to_string()),
@@ -1346,7 +1346,7 @@ fn migrate_and_freeze_pool() {
     let protocol_fee_percent = Decimal::zero();
 
     let msg = InstantiateMsg {
-        token1_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         token2_denom: Denom::Native(IBC_TOKEN_DENOM.into()),
         lp_token_code_id: lp_token_id,
         owner: Some(owner.to_string()),
