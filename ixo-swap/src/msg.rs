@@ -112,10 +112,10 @@ pub enum QueryMsg {
     Balance { address: String },
     #[returns(InfoResponse)]
     Info {},
-    #[returns(Token1ForToken2PriceResponse)]
-    Token1ForToken2Price { token1_amount: Uint128 },
-    #[returns(Token2ForToken1PriceResponse)]
-    Token2ForToken1Price { token2_amount: Uint128 },
+    #[returns(Token1155ForToken2PriceResponse)]
+    Token1155ForToken2Price { token1155_amount: Uint128 },
+    #[returns(Token2ForToken1155PriceResponse)]
+    Token2ForToken1155Price { token2_amount: Uint128 },
     #[returns(FeeResponse)]
     Fee {},
     #[returns(TokenSuppliesResponse)]
@@ -150,13 +150,13 @@ pub struct FeeResponse {
 }
 
 #[cw_serde]
-pub struct Token1ForToken2PriceResponse {
+pub struct Token1155ForToken2PriceResponse {
     pub token2_amount: Uint128,
 }
 
 #[cw_serde]
-pub struct Token2ForToken1PriceResponse {
-    pub token1_amount: Uint128,
+pub struct Token2ForToken1155PriceResponse {
+    pub token1155_amount: Uint128,
 }
 
 #[cw_serde]

@@ -17,8 +17,8 @@ use prost::Message;
 use crate::error::ContractError;
 use crate::msg::{
     Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, MigrateMsg, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1ForToken2PriceResponse,
-    Token2ForToken1PriceResponse, TokenAmount, TokenSelect, TokenSuppliesResponse,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
+    Token2ForToken1155PriceResponse, TokenAmount, TokenSelect, TokenSuppliesResponse,
 };
 use crate::random::seed::get_seed;
 use crate::random::{pcg64_from_seed, Pcg64};
@@ -1271,11 +1271,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Balance { address } => to_binary(&query_balance(deps, address)?),
         QueryMsg::Info {} => to_binary(&query_info(deps)?),
-        QueryMsg::Token1ForToken2Price { token1_amount } => {
-            to_binary(&query_token1_for_token2_price(deps, token1_amount)?)
+        QueryMsg::Token1155ForToken2Price { token1155_amount } => {
+            to_binary(&query_token1155_for_token2_price(deps, token1155_amount)?)
         }
-        QueryMsg::Token2ForToken1Price { token2_amount } => {
-            to_binary(&query_token2_for_token1_price(deps, token2_amount)?)
+        QueryMsg::Token2ForToken1155Price { token2_amount } => {
+            to_binary(&query_token2_for_token1155_price(deps, token2_amount)?)
         }
         QueryMsg::Fee {} => to_binary(&query_fee(deps)?),
         QueryMsg::TokenSupplies { tokens_id } => to_binary(&query_tokens_supply(deps, tokens_id)?),
@@ -1320,40 +1320,40 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
     })
 }
 
-pub fn query_token1_for_token2_price(
+pub fn query_token1155_for_token2_price(
     deps: Deps,
-    token1_amount: Uint128,
-) -> StdResult<Token1ForToken2PriceResponse> {
+    token1155_amount: Uint128,
+) -> StdResult<Token1155ForToken2PriceResponse> {
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token2_amount = get_input_price(
-        token1_amount,
+        token1155_amount,
         token1155.reserve,
         token2.reserve,
         total_fee_percent,
     )?;
-    Ok(Token1ForToken2PriceResponse { token2_amount })
+    Ok(Token1155ForToken2PriceResponse { token2_amount })
 }
 
-pub fn query_token2_for_token1_price(
+pub fn query_token2_for_token1155_price(
     deps: Deps,
     token2_amount: Uint128,
-) -> StdResult<Token2ForToken1PriceResponse> {
+) -> StdResult<Token2ForToken1155PriceResponse> {
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
-    let token1_amount = get_input_price(
+    let token1155_amount = get_input_price(
         token2_amount,
         token2.reserve,
         token1155.reserve,
         total_fee_percent,
     )?;
-    Ok(Token2ForToken1PriceResponse { token1_amount })
+    Ok(Token2ForToken1155PriceResponse { token1155_amount })
 }
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {

@@ -5,13 +5,13 @@ file_version: 1.1.3
 app_version: 1.14.0
 ---
 
-In this document will be discovered how the instantiation of a contract is proceeded.
+In this document will be discovered the instantiation of a contract.
 
 ## Message
 
 <br/>
 
-In order to instantiate the contract, we should send an appropriate message to the contract, in case of instantiation it should be `InstantiateMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:10:4:4:`pub struct InstantiateMsg {`"/>:
+In order to instantiate the contract, we should send an appropriate message to the contract, in case of instantiation it should be `InstantiateMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:10:4:4:`pub struct InstantiateMsg {`"/>.
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -29,11 +29,11 @@ In order to instantiate the contract, we should send an appropriate message to t
 
 <br/>
 
-### Denom
+## Denom
 
 <br/>
 
-For instantiation we need to provide two tokens with one of supported `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> for each.
+For instantiation we need to provide two tokens with one of supported `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> for each. The first one is aways `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token and the second one is either `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> or `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/>.
 
 *   `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> needs a denom of token.
 
@@ -52,7 +52,7 @@ For instantiation we need to provide two tokens with one of supported `Denom`<sw
 
 <br/>
 
-### Fee
+## Fee
 
 While instantiating, we need to specify 3 field for fee.
 
@@ -62,39 +62,28 @@ While instantiating, we need to specify 3 field for fee.
 
 *   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:15:3:3:`    pub protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:17:3:3:`    pub protocol_fee_percent: Decimal,`"/>for every swap.
 
-### Example
+## Example
 
-> {
-> 
-> "token1\_denom":{
-> 
-> "cw1155":\[
-> 
-> "ixo1l6j9z82fvpn0mzkztmjz0zu78kj9nuh68vdd6czs8tq00ngltnxqxh9zwq",
-> 
-> "CARBON"
-> 
-> \]
-> 
-> },
-> 
-> "token2\_denom":{
-> 
-> "cw20":"ixo15hzg7eaxgs6ecn46gmu4juc9tau2w45l9cnf8n0797nmmtkdv7jsklrskg"
-> 
-> },
-> 
-> "lp\_token\_code\_id":25,
-> 
-> "owner":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2",
-> 
-> "protocol\_fee\_recipient":"ixo1rngxtm5sapzqdtw3k3e2e9zkjxzgpxd6vw9pye",
-> 
-> "protocol\_fee\_percent":"0.1",
-> 
-> "lp\_fee\_percent":"0.2"
-> 
-> }
+```json
+{
+   "token1_denom":{
+      "cw1155":[
+         "ixo1l6j9z82fvpn0mzkztmjz0zu78kj9nuh68vdd6czs8tq00ngltnxqxh9zwq",
+         "CARBON"
+      ]
+   },
+   "token2_denom":{
+      "cw20":"ixo15hzg7eaxgs6ecn46gmu4juc9tau2w45l9cnf8n0797nmmtkdv7jsklrskg"
+   },
+   "lp_token_code_id":25,
+   "owner":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2",
+   "protocol_fee_recipient":"ixo1rngxtm5sapzqdtw3k3e2e9zkjxzgpxd6vw9pye",
+   "protocol_fee_percent":"0.1",
+   "lp_fee_percent":"0.2"
+}
+```
+
+<br/>
 
 <br/>
 
