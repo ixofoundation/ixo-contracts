@@ -161,7 +161,7 @@ and 1 optional:
 
 ## PassThroughSwap
 
-In order to swap tokens on single contract and send output tokens to specific recipient we need to send `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:88:1:1:`    SwapAndSendTo {`"/> message to a contract.
+In order to swap token from one contract for token from another contract we need to send `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:81:1:1:`    PassThroughSwap {`"/> message to a contract.
 
 ### Message
 
