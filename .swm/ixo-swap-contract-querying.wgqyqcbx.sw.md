@@ -53,6 +53,14 @@ pub struct BalanceResponse {
 
 ### Example
 
+```json
+{
+   "balance":{
+      "address":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2"
+   }
+}
+```
+
 ## Info
 
 In order to get current state of contract we need to send `Info`<swm-token data-swm-token=":ixo-swap/src/msg.rs:114:1:1:`    Info {},`"/> message to a contract.
@@ -150,6 +158,19 @@ Response consists of 1 field:
 
 ### Example
 
+```json
+{
+   "token1155_for_token2_price":{
+      "token1155_amount":{
+         "token1155":{
+            "CARBON/1":"100",
+            "CARBON/2":"100"
+         }
+      }
+   }
+}
+```
+
 ## Token2ForToken1155Price
 
 In order to get possible `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> amount based on `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> amount we need to send `Token2ForToken1155Price`<swm-token data-swm-token=":ixo-swap/src/msg.rs:118:1:1:`    Token2ForToken1155Price { token2_amount: TokenAmount },`"/> message to a contract.
@@ -187,6 +208,16 @@ Response consists of 1 field:
 <br/>
 
 ### Example
+
+```
+{
+   "token2_for_token1155_price":{
+      "token2_amount":{
+         "token2":"100"
+      }
+   }
+}
+```
 
 ## Fee
 
@@ -278,6 +309,17 @@ Response consists of 1 field:
 <br/>
 
 ### Example
+
+```
+{
+   "token_supplies":{
+      "tokens_id":[
+         "CARBON/1",
+         "CARBON/2"
+      ]
+   }
+}
+```
 
 <br/>
 
