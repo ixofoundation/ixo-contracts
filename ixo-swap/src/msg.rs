@@ -33,24 +33,24 @@ pub enum TokenSelect {
 
 #[cw_serde]
 pub enum TokenAmount {
-    Token1155(HashMap<TokenId, Uint128>),
-    Token2(Uint128),
+    Multiple(HashMap<TokenId, Uint128>),
+    Single(Uint128),
 }
 
 impl TokenAmount {
-    pub fn get_token1155(&self) -> HashMap<TokenId, Uint128> {
+    pub fn get_multiple(&self) -> HashMap<TokenId, Uint128> {
         match self {
-            TokenAmount::Token1155(amount) => amount.clone(),
-            TokenAmount::Token2(e) => {
+            TokenAmount::Multiple(amounts) => amounts.clone(),
+            TokenAmount::Single(e) => {
                 panic!("{}: {:?}", "Incompatible amount", &e)
             }
         }
     }
 
-    pub fn get_token2(&self) -> Uint128 {
+    pub fn get_single(&self) -> Uint128 {
         match self {
-            TokenAmount::Token2(amount) => amount.clone(),
-            TokenAmount::Token1155(e) => {
+            TokenAmount::Single(amount) => amount.clone(),
+            TokenAmount::Multiple(e) => {
                 panic!("{}: {:?}", "Incompatible amount", &e)
             }
         }
@@ -67,7 +67,7 @@ pub enum ExecuteMsg {
     },
     RemoveLiquidity {
         amount: Uint128,
-        min_token1155: HashMap<TokenId, Uint128>,
+        min_token1155: TokenAmount,
         min_token2: Uint128,
         expiration: Option<Expiration>,
     },
