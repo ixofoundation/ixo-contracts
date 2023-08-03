@@ -296,13 +296,16 @@ fn get_token2_amount_required(
     }
 }
 
-fn get_token_total_amount(token_amounts: &HashMap<TokenId, Uint128>) -> Uint128 {
-    token_amounts
-        .clone()
-        .into_iter()
-        .map(|(_, amount)| amount)
-        .reduce(|acc, e| acc + e)
-        .unwrap()
+fn get_token_total_amount(token_amount: &TokenAmount) -> Uint128 {
+    match token_amount {
+        TokenAmount::Token1155(amounts) => amounts
+            .clone()
+            .into_iter()
+            .map(|(_, amount)| amount)
+            .reduce(|acc, e| acc + e)
+            .unwrap(),
+        TokenAmount::Token2(amount) => *amount,
+    }
 }
 
 pub fn execute_add_liquidity(
@@ -323,7 +326,8 @@ pub fn execute_add_liquidity(
     validate_token1155_denom(&deps, &token1155.denom, &token1155_amounts)?;
     validate_input_amount(&info.funds, max_token2, &token2.denom)?;
 
-    let token1155_total_amount = get_token_total_amount(&token1155_amounts);
+    let token1155_total_amount =
+        get_token_total_amount(&TokenAmount::Token1155(token1155_amounts.clone()));
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
         get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
@@ -630,7 +634,8 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    let min_token1155_total_amount = get_token_total_amount(&min_token1155);
+    let min_token1155_total_amount =
+        get_token_total_amount(&TokenAmount::Token1155(min_token1155.clone()));
     let token1155_amount = amount
         .checked_mul(token1155.reserve)
         .map_err(StdError::overflow)?
@@ -1004,10 +1009,7 @@ pub fn execute_swap(
         validate_input_amount(&info.funds, amount, &input_token.denom)?;
     }
 
-    let input_amount_total = match input_amount {
-        TokenAmount::Token1155(ref amounts) => get_token_total_amount(amounts),
-        TokenAmount::Token2(amount) => amount,
-    };
+    let input_amount_total = get_token_total_amount(&input_amount);
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token_bought = get_input_price(
@@ -1017,10 +1019,7 @@ pub fn execute_swap(
         total_fee_percent,
     )?;
 
-    let min_token_total = match min_token {
-        TokenAmount::Token1155(ref amounts) => get_token_total_amount(amounts),
-        TokenAmount::Token2(amount) => amount,
-    };
+    let min_token_total = get_token_total_amount(&min_token);
     if min_token_total > token_bought {
         return Err(ContractError::SwapMinError {
             min: min_token_total,
@@ -1085,10 +1084,8 @@ pub fn execute_swap(
     input_token_item.update(
         deps.storage,
         |mut input_token| -> Result<_, ContractError> {
-            let input_amount_without_protocol_fee_total = match input_amount_without_protocol_fee {
-                TokenAmount::Token1155(amounts) => get_token_total_amount(&amounts),
-                TokenAmount::Token2(amount) => amount,
-            };
+            let input_amount_without_protocol_fee_total =
+                get_token_total_amount(&input_amount_without_protocol_fee);
             input_token.reserve = input_token
                 .reserve
                 .checked_add(input_amount_without_protocol_fee_total)
@@ -1143,10 +1140,7 @@ pub fn execute_pass_through_swap(
         validate_input_amount(&info.funds, amount, &input_token.denom)?;
     }
 
-    let input_token_amount_total = match input_token_amount {
-        TokenAmount::Token1155(ref amounts) => get_token_total_amount(&amounts),
-        TokenAmount::Token2(amount) => amount,
-    };
+    let input_token_amount_total = get_token_total_amount(&input_token_amount);
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let amount_to_transfer = get_input_price(
@@ -1206,7 +1200,7 @@ pub fn execute_pass_through_swap(
         .querier
         .query_wasm_smart(&output_amm_address, &QueryMsg::Info {})?;
 
-    let transfer_input_token_enum = if transfer_token.denom == resp.token1_denom {
+    let transfer_input_token_enum = if transfer_token.denom == resp.token1155_denom {
         Ok(TokenSelect::Token1155)
     } else if transfer_token.denom == resp.token2_denom {
         Ok(TokenSelect::Token2)
@@ -1239,10 +1233,8 @@ pub fn execute_pass_through_swap(
 
     input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         // Add input amount - protocol fee to input token reserve
-        let input_amount_without_protocol_fee_total = match input_amount_without_protocol_fee {
-            TokenAmount::Token1155(amounts) => get_token_total_amount(&amounts),
-            TokenAmount::Token2(amount) => amount,
-        };
+        let input_amount_without_protocol_fee_total =
+            get_token_total_amount(&input_amount_without_protocol_fee);
         token.reserve = token
             .reserve
             .checked_add(input_amount_without_protocol_fee_total)
@@ -1311,8 +1303,8 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
 
     // TODO get total supply
     Ok(InfoResponse {
-        token1_reserve: token1155.reserve,
-        token1_denom: token1155.denom,
+        token1155_reserve: token1155.reserve,
+        token1155_denom: token1155.denom,
         token2_reserve: token2.reserve,
         token2_denom: token2.denom,
         lp_token_supply: get_lp_token_supply(deps, &lp_token_address)?,
@@ -1322,15 +1314,16 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
 
 pub fn query_token1155_for_token2_price(
     deps: Deps,
-    token1155_amount: Uint128,
+    token1155_amount: TokenAmount,
 ) -> StdResult<Token1155ForToken2PriceResponse> {
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
+    let token1155_amount_total = get_token_total_amount(&token1155_amount);
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token2_amount = get_input_price(
-        token1155_amount,
+        token1155_amount_total,
         token1155.reserve,
         token2.reserve,
         total_fee_percent,
@@ -1340,15 +1333,16 @@ pub fn query_token1155_for_token2_price(
 
 pub fn query_token2_for_token1155_price(
     deps: Deps,
-    token2_amount: Uint128,
+    token2_amount: TokenAmount,
 ) -> StdResult<Token2ForToken1155PriceResponse> {
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
+    let token2_amount_total = get_token_total_amount(&token2_amount);
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token1155_amount = get_input_price(
-        token2_amount,
+        token2_amount_total,
         token2.reserve,
         token1155.reserve,
         total_fee_percent,

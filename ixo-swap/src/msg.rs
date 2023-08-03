@@ -113,9 +113,9 @@ pub enum QueryMsg {
     #[returns(InfoResponse)]
     Info {},
     #[returns(Token1155ForToken2PriceResponse)]
-    Token1155ForToken2Price { token1155_amount: Uint128 },
+    Token1155ForToken2Price { token1155_amount: TokenAmount },
     #[returns(Token2ForToken1155PriceResponse)]
-    Token2ForToken1155Price { token2_amount: Uint128 },
+    Token2ForToken1155Price { token2_amount: TokenAmount },
     #[returns(FeeResponse)]
     Fee {},
     #[returns(TokenSuppliesResponse)]
@@ -133,8 +133,8 @@ pub struct MigrateMsg {
 
 #[cw_serde]
 pub struct InfoResponse {
-    pub token1_reserve: Uint128,
-    pub token1_denom: Denom,
+    pub token1155_reserve: Uint128,
+    pub token1155_denom: Denom,
     pub token2_reserve: Uint128,
     pub token2_denom: Denom,
     pub lp_token_supply: Uint128,
