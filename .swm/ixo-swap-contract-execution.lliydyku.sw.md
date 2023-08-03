@@ -28,7 +28,7 @@ In order to add some liquidity to pool we need to send `AddLiquidity`<swm-token 
 
 <br/>
 
-This message consists of 3 mandatory fields:
+Message consists of 3 mandatory fields:
 
 *   `token1155_amounts`<swm-token data-swm-token=":ixo-swap/src/msg.rs:63:1:1:`        token1155_amounts: HashMap&lt;TokenId, Uint128&gt;,`"/> -
 
@@ -38,7 +38,7 @@ This message consists of 3 mandatory fields:
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> -
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height and timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -62,7 +62,7 @@ In order to remove liquidity from pool we need to send `RemoveLiquidity`<swm-tok
 
 <br/>
 
-This message consists of 3 mandatory fields:
+Message consists of 3 mandatory fields:
 
 *   `amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        amount: Uint128,`"/> -
 
@@ -72,7 +72,7 @@ This message consists of 3 mandatory fields:
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> -
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height and timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -96,7 +96,7 @@ In order to swap tokens on single contract we need to send `Swap`<swm-token data
 
 <br/>
 
-This message consists of 3 mandatory fields:
+Message consists of 3 mandatory fields:
 
 *   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> -
 
@@ -106,7 +106,7 @@ This message consists of 3 mandatory fields:
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> -
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height and timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -130,7 +130,7 @@ In order to swap tokens on single contract and send output tokens to specific re
 
 <br/>
 
-This message consists of 4 mandatory fields:
+Message consists of 4 mandatory fields:
 
 *   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> -
 
@@ -142,7 +142,7 @@ This message consists of 4 mandatory fields:
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> -
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height and timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -167,7 +167,7 @@ In order to swap token from one contract for token from another contract we need
 
 <br/>
 
-This message consists of 4 mandatory fields:
+Message consists of 4 mandatory fields:
 
 *   `output_amm_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:82:1:1:`        output_amm_address: String,`"/>
 
@@ -179,7 +179,7 @@ This message consists of 4 mandatory fields:
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> -
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height and timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -204,7 +204,7 @@ In order to update contract configuration we need to send `UpdateConfig`<swm-tok
 
 <br/>
 
-This message consists of 3 mandatory fields:
+Message consists of 3 mandatory fields:
 
 *   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:97:1:1:`        lp_fee_percent: Decimal,`"/> -
 
@@ -214,7 +214,7 @@ This message consists of 3 mandatory fields:
 
 and 1 optional:
 
-*   `owner`<swm-token data-swm-token=":ixo-swap/src/msg.rs:96:1:1:`        owner: Option&lt;String&gt;,`"/> -
+*   `owner`<swm-token data-swm-token=":ixo-swap/src/msg.rs:96:1:1:`        owner: Option&lt;String&gt;,`"/> - owner of a contract
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -230,6 +230,17 @@ and 1 optional:
 
 ### Example
 
+```json
+{
+   "update_config":{
+      "owner":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2",
+      "protocol_fee_recipient":"ixo1rngxtm5sapzqdtw3k3e2e9zkjxzgpxd6vw9pye",
+      "protocol_fee_percent":"0.1",
+      "lp_fee_percent":"0.2"
+   }
+}
+```
+
 ## FreezeDeposits
 
 In order to freeze or unfreeze deposits we need to send `FreezeDeposits`<swm-token data-swm-token=":ixo-swap/src/msg.rs:102:1:1:`    FreezeDeposits {`"/> message to a contract.
@@ -238,9 +249,9 @@ In order to freeze or unfreeze deposits we need to send `FreezeDeposits`<swm-tok
 
 <br/>
 
-This message consists of 1 mandatory field:
+Message consists of 1 mandatory field:
 
-*   `freeze`<swm-token data-swm-token=":ixo-swap/src/msg.rs:103:1:1:`        freeze: bool,`"/> -
+*   `freeze`<swm-token data-swm-token=":ixo-swap/src/msg.rs:103:1:1:`        freeze: bool,`"/> - freeze status
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -252,6 +263,14 @@ This message consists of 1 mandatory field:
 <br/>
 
 ### Example
+
+```json
+{
+   "freeze_deposits":{
+      "freeze":false
+   }
+}
+```
 
 <br/>
 

@@ -45,7 +45,7 @@ Response consists of 1 field:
 
 *   `balance` - amount of `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> token for provided address
 
-```
+```rust
 pub struct BalanceResponse {
     pub balance: Uint128,
 }
@@ -209,7 +209,7 @@ Response consists of 1 field:
 
 ### Example
 
-```
+```json
 {
    "token2_for_token1155_price":{
       "token2_amount":{
@@ -264,7 +264,7 @@ Response consists of 4 field:
 
 ### Example
 
-```
+```json
 {
     "fee":{
         
@@ -310,7 +310,7 @@ Response consists of 1 field:
 
 ### Example
 
-```
+```json
 {
    "token_supplies":{
       "tokens_id":[
