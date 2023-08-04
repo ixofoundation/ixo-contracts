@@ -1,1 +1,1 @@
-16c5a8764cd060c6394dd4da5563f418fcff50a133e1e5f6f1b860bd07841d74  ./target/wasm32-unknown-unknown/release/ixoswap.wasm
+999526d126469129bab912f960380851deb899f00e35f89b61a4aa09687fbff1  ./target/wasm32-unknown-unknown/release/ixoswap.wasm

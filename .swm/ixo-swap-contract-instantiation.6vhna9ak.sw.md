@@ -37,9 +37,9 @@ For instantiation we need to provide two tokens with one of supported `Denom`<sw
 
 *   `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> needs a denom of token
 
-*   `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> needs an address of existing cw20 contract
+*   `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> needs an address of existing `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> contract
 
-*   `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> needs and address of existing cw1155 contract and supported denom of token
+*   `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> needs an address of existing `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> contract and supported denom of token
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
