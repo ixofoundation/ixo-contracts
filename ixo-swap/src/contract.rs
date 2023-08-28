@@ -700,12 +700,11 @@ pub fn execute_remove_liquidity(
         _ => {}
     };
 
-    let burn_amount = get_token_total_amount(&TokenAmount::Multiple(token1155_amounts_to_transfer));
-    msgs.push(get_burn_msg(&lp_token_addr, &info.sender, burn_amount)?);
+    msgs.push(get_burn_msg(&lp_token_addr, &info.sender, amount)?);
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
-        attr("liquidity_burned", burn_amount),
-        attr("token1_returned", token1155_amount),
+        attr("liquidity_burned", amount),
+        attr("token1155_returned", token1155_amount),
         attr("token2_returned", token2_amount),
     ]))
 }
@@ -750,27 +749,51 @@ fn get_token_amounts_to_transfer(
                     .checked_div(Uint128::from(token1155_supplies.len() as u32))
                     .map_err(StdError::divide_by_zero)?;
 
-                for (token_id, token_amount) in token1155_amounts_to_transfer.iter_mut() {
-                    let token_supply = TOKEN_SUPPLIES
-                        .may_load(storage, token_id.clone())?
-                        .unwrap_or_default();
+                if additional_amount_to_transfer.is_zero() {
+                    for (token_id, token_amount) in token1155_supplies.clone().into_iter() {
+                        let amount_to_transfer = *token1155_amounts_to_transfer
+                            .get(&token_id)
+                            .unwrap_or(&Uint128::zero());
+                        let mut remaining_supply = Uint128::zero();
 
-                    let mut remaining_supply = Uint128::zero();
-                    if token_supply > additional_amount_to_transfer {
-                        *token_amount += additional_amount_to_transfer;
-                        token1155_amount_left_to_transfer -= additional_amount_to_transfer;
-                        remaining_supply = token_supply - additional_amount_to_transfer;
-                    } else {
-                        *token_amount += token_supply;
-                        token1155_amount_left_to_transfer -= token_supply;
+                        if token_amount >= token1155_amount_left_to_transfer {
+                            token1155_amounts_to_transfer.insert(
+                                token_id.clone(),
+                                amount_to_transfer + token1155_amount_left_to_transfer,
+                            );
+                            remaining_supply = token_amount - token1155_amount_left_to_transfer;
+                            token1155_amount_left_to_transfer = Uint128::zero();
+                        } else {
+                            token1155_amounts_to_transfer
+                                .insert(token_id.clone(), amount_to_transfer + token_amount);
+                            token1155_amount_left_to_transfer -= token_amount;
+                        }
+
+                        update_token_supplies(storage, remaining_supply, token_id)?;
                     }
+                } else {
+                    for (token_id, token_amount) in token1155_amounts_to_transfer.iter_mut() {
+                        let token_supply = TOKEN_SUPPLIES
+                            .may_load(storage, token_id.clone())?
+                            .unwrap_or_default();
 
-                    if remaining_supply.is_zero() {
-                        TOKEN_SUPPLIES.remove(storage, token_id.clone());
-                        token1155_supplies.remove(token_id);
-                    } else {
-                        TOKEN_SUPPLIES.save(storage, token_id.clone(), &remaining_supply)?;
-                        token1155_supplies.insert(token_id.clone(), remaining_supply);
+                        let mut remaining_supply = Uint128::zero();
+                        if token_supply >= additional_amount_to_transfer {
+                            *token_amount += additional_amount_to_transfer;
+                            token1155_amount_left_to_transfer -= additional_amount_to_transfer;
+                            remaining_supply = token_supply - additional_amount_to_transfer;
+                        } else {
+                            *token_amount += token_supply;
+                            token1155_amount_left_to_transfer -= token_supply;
+                        }
+
+                        if remaining_supply.is_zero() {
+                            TOKEN_SUPPLIES.remove(storage, token_id.clone());
+                            token1155_supplies.remove(token_id);
+                        } else {
+                            TOKEN_SUPPLIES.save(storage, token_id.clone(), &remaining_supply)?;
+                            token1155_supplies.insert(token_id.clone(), remaining_supply);
+                        }
                     }
                 }
             }
@@ -782,16 +805,12 @@ fn get_token_amounts_to_transfer(
                     .range(storage, None, None, Order::Ascending)
                     .collect::<StdResult<Vec<_>>>()?;
                 let token_supply = token_supplies[supply_index].clone();
-                let mut token_amount = if let Some(token_amount) =
-                    token1155_amounts_to_transfer.get(&token_supply.0)
-                {
-                    token_amount.clone()
-                } else {
-                    Uint128::zero()
-                };
+                let mut token_amount = *token1155_amounts_to_transfer
+                    .get(&token_supply.0)
+                    .unwrap_or(&Uint128::zero());
 
                 let mut remaining_supply = Uint128::zero();
-                if token_supply.1 > token1155_amount_left_to_transfer {
+                if token_supply.1 >= token1155_amount_left_to_transfer {
                     token_amount += token1155_amount_left_to_transfer;
                     remaining_supply = token_supply.1 - token1155_amount_left_to_transfer;
                     token1155_amount_left_to_transfer = Uint128::zero();
@@ -800,18 +819,27 @@ fn get_token_amounts_to_transfer(
                     token1155_amount_left_to_transfer -= token_supply.1;
                 }
 
-                if remaining_supply.is_zero() {
-                    TOKEN_SUPPLIES.remove(storage, token_supply.0.clone());
-                } else {
-                    TOKEN_SUPPLIES.save(storage, token_supply.0.clone(), &remaining_supply)?;
-                }
-
+                update_token_supplies(storage, remaining_supply, token_supply.0.clone())?;
                 token1155_amounts_to_transfer.insert(token_supply.0.clone(), token_amount);
             }
         }
     };
 
     Ok(token1155_amounts_to_transfer)
+}
+
+fn update_token_supplies(
+    storage: &mut dyn Storage,
+    remaining_supply: Uint128,
+    token_id: String,
+) -> StdResult<()> {
+    if remaining_supply.is_zero() {
+        TOKEN_SUPPLIES.remove(storage, token_id);
+    } else {
+        TOKEN_SUPPLIES.save(storage, token_id, &remaining_supply)?;
+    }
+
+    return Ok(());
 }
 
 fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
@@ -1124,7 +1152,7 @@ pub fn execute_swap(
     }
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
-        attr("native_sold", input_amount_total),
+        attr("token_sold", input_amount_total),
         attr("token_bought", token_bought),
     ]))
 }
