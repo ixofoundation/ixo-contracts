@@ -716,10 +716,11 @@ fn get_token_amounts_to_transfer(
 ) -> Result<HashMap<TokenId, Uint128>, ContractError> {
     let mut token1155_amount_left_to_transfer = token1155_amount;
     let mut token1155_amounts_to_transfer: HashMap<TokenId, Uint128> = HashMap::new();
-    let mut token1155_supplies: HashMap<TokenId, Uint128> = HashMap::new();
 
     match min_token1155 {
         TokenAmount::Multiple(amounts) => {
+            let mut token1155_supplies: HashMap<TokenId, Uint128> = HashMap::new();
+
             for (token_id, token_amount) in amounts.clone().into_iter() {
                 let token_supply = TOKEN_SUPPLIES
                     .may_load(storage, token_id.clone())?
@@ -736,12 +737,12 @@ fn get_token_amounts_to_transfer(
                 token1155_amounts_to_transfer.insert(token_id.clone(), token_amount);
 
                 let remaining_supply = token_supply - token_amount;
-                if remaining_supply.is_zero() {
-                    TOKEN_SUPPLIES.remove(storage, token_id);
-                } else {
-                    TOKEN_SUPPLIES.save(storage, token_id.clone(), &remaining_supply)?;
-                    token1155_supplies.insert(token_id.clone(), remaining_supply);
-                }
+                update_token_supplies(
+                    storage,
+                    remaining_supply,
+                    token_id,
+                    Some(&mut token1155_supplies),
+                )?;
             }
 
             while !token1155_amount_left_to_transfer.is_zero() && !token1155_supplies.is_empty() {
@@ -749,94 +750,107 @@ fn get_token_amounts_to_transfer(
                     .checked_div(Uint128::from(token1155_supplies.len() as u32))
                     .map_err(StdError::divide_by_zero)?;
 
-                if additional_amount_to_transfer.is_zero() {
-                    for (token_id, token_amount) in token1155_supplies.clone().into_iter() {
-                        let amount_to_transfer = *token1155_amounts_to_transfer
-                            .get(&token_id)
-                            .unwrap_or(&Uint128::zero());
-                        let mut remaining_supply = Uint128::zero();
+                for (token_id, token_amount) in token1155_supplies.clone().into_iter() {
+                    let mut optional_additional_amount = None;
+                    let mut optional_supplies = None;
+                    if !additional_amount_to_transfer.is_zero() {
+                        optional_additional_amount = Some(additional_amount_to_transfer);
+                        optional_supplies = Some(&mut token1155_supplies);
+                    };
 
-                        if token_amount >= token1155_amount_left_to_transfer {
-                            token1155_amounts_to_transfer.insert(
-                                token_id.clone(),
-                                amount_to_transfer + token1155_amount_left_to_transfer,
-                            );
-                            remaining_supply = token_amount - token1155_amount_left_to_transfer;
-                            token1155_amount_left_to_transfer = Uint128::zero();
-                        } else {
-                            token1155_amounts_to_transfer
-                                .insert(token_id.clone(), amount_to_transfer + token_amount);
-                            token1155_amount_left_to_transfer -= token_amount;
-                        }
-
-                        update_token_supplies(storage, remaining_supply, token_id)?;
-                    }
-                } else {
-                    for (token_id, token_amount) in token1155_amounts_to_transfer.iter_mut() {
-                        let token_supply = TOKEN_SUPPLIES
-                            .may_load(storage, token_id.clone())?
-                            .unwrap_or_default();
-
-                        let mut remaining_supply = Uint128::zero();
-                        if token_supply >= additional_amount_to_transfer {
-                            *token_amount += additional_amount_to_transfer;
-                            token1155_amount_left_to_transfer -= additional_amount_to_transfer;
-                            remaining_supply = token_supply - additional_amount_to_transfer;
-                        } else {
-                            *token_amount += token_supply;
-                            token1155_amount_left_to_transfer -= token_supply;
-                        }
-
-                        if remaining_supply.is_zero() {
-                            TOKEN_SUPPLIES.remove(storage, token_id.clone());
-                            token1155_supplies.remove(token_id);
-                        } else {
-                            TOKEN_SUPPLIES.save(storage, token_id.clone(), &remaining_supply)?;
-                            token1155_supplies.insert(token_id.clone(), remaining_supply);
-                        }
-                    }
+                    update_token_amounts(
+                        storage,
+                        &mut token1155_amounts_to_transfer,
+                        &mut token1155_amount_left_to_transfer,
+                        token_id,
+                        token_amount,
+                        optional_additional_amount,
+                        optional_supplies,
+                    )?;
                 }
             }
         }
         TokenAmount::Single(_) => {
-            let supply_index = 0;
+            let token_supplies = TOKEN_SUPPLIES
+                .range(storage, None, None, Order::Ascending)
+                .collect::<StdResult<Vec<_>>>()?;
+
+            let mut supply_index = 0;
             while !token1155_amount_left_to_transfer.is_zero() {
-                let token_supplies = TOKEN_SUPPLIES
-                    .range(storage, None, None, Order::Ascending)
-                    .collect::<StdResult<Vec<_>>>()?;
-                let token_supply = token_supplies[supply_index].clone();
-                let mut token_amount = *token1155_amounts_to_transfer
-                    .get(&token_supply.0)
-                    .unwrap_or(&Uint128::zero());
+                let (token_id, token_amount) = token_supplies[supply_index].clone();
 
-                let mut remaining_supply = Uint128::zero();
-                if token_supply.1 >= token1155_amount_left_to_transfer {
-                    token_amount += token1155_amount_left_to_transfer;
-                    remaining_supply = token_supply.1 - token1155_amount_left_to_transfer;
-                    token1155_amount_left_to_transfer = Uint128::zero();
-                } else {
-                    token_amount += token_supply.1;
-                    token1155_amount_left_to_transfer -= token_supply.1;
-                }
-
-                update_token_supplies(storage, remaining_supply, token_supply.0.clone())?;
-                token1155_amounts_to_transfer.insert(token_supply.0.clone(), token_amount);
+                update_token_amounts(
+                    storage,
+                    &mut token1155_amounts_to_transfer,
+                    &mut token1155_amount_left_to_transfer,
+                    token_id,
+                    token_amount,
+                    None,
+                    None,
+                )?;
+                supply_index += 1;
             }
         }
     };
 
-    Ok(token1155_amounts_to_transfer)
+    Ok(token1155_amounts_to_transfer.clone())
+}
+
+fn update_token_amounts(
+    storage: &mut dyn Storage,
+    token_amounts_to_transfer: &mut HashMap<String, Uint128>,
+    token_amount_left_to_transfer: &mut Uint128,
+    token_id: String,
+    token_amount: Uint128,
+    additional_token_amount_to_transfer: Option<Uint128>,
+    token_supplies: Option<&mut HashMap<String, Uint128>>,
+) -> StdResult<()> {
+    let mut amount_to_transfer = *token_amounts_to_transfer
+        .get(&token_id)
+        .unwrap_or(&Uint128::zero());
+
+    let mut token_supply = *token_amount_left_to_transfer;
+    if let Some(token_amount) = additional_token_amount_to_transfer {
+        token_supply = token_amount;
+    }
+
+    let mut remaining_supply = Uint128::zero();
+    if token_amount >= token_supply {
+        amount_to_transfer += token_supply;
+        remaining_supply = token_amount - token_supply;
+
+        if let Some(token_amount) = additional_token_amount_to_transfer {
+            *token_amount_left_to_transfer -= token_amount;
+        } else {
+            *token_amount_left_to_transfer = Uint128::zero();
+        }
+    } else {
+        amount_to_transfer += token_amount;
+        *token_amount_left_to_transfer -= token_amount;
+    }
+
+    token_amounts_to_transfer.insert(token_id.clone(), amount_to_transfer);
+    update_token_supplies(storage, remaining_supply, token_id.clone(), token_supplies)
 }
 
 fn update_token_supplies(
     storage: &mut dyn Storage,
     remaining_supply: Uint128,
     token_id: String,
+    token_supplies: Option<&mut HashMap<String, Uint128>>,
 ) -> StdResult<()> {
     if remaining_supply.is_zero() {
-        TOKEN_SUPPLIES.remove(storage, token_id);
+        TOKEN_SUPPLIES.remove(storage, token_id.clone());
+
+        if let Some(token_supplies) = token_supplies {
+            token_supplies.remove(&token_id);
+        }
     } else {
-        TOKEN_SUPPLIES.save(storage, token_id, &remaining_supply)?;
+        TOKEN_SUPPLIES.save(storage, token_id.clone(), &remaining_supply)?;
+
+        if let Some(token_supplies) = token_supplies {
+            token_supplies.insert(token_id, remaining_supply);
+        }
     }
 
     return Ok(());
@@ -955,25 +969,78 @@ fn get_protocol_fee_amount(
 
     let fee_percent = fee_decimal_to_uint128(fee_percent)?;
     match input_amount.clone() {
-        TokenAmount::Multiple(mut amounts) => {
-            for (_, token_amount) in amounts.iter_mut() {
-                *token_amount = token_amount
-                    .full_mul(fee_percent)
-                    .checked_div(Uint256::from(FEE_SCALE_FACTOR))
-                    .map_err(StdError::divide_by_zero)?
-                    .try_into()?;
+        TokenAmount::Multiple(amounts) => Ok(Some(get_multiple_protocol_fee_amount(
+            amounts,
+            fee_percent,
+        )?)),
+        TokenAmount::Single(amount) => {
+            Ok(Some(get_single_protocol_fee_amount(amount, fee_percent)?))
+        }
+    }
+}
+
+fn get_multiple_protocol_fee_amount(
+    input_amounts: HashMap<String, Uint128>,
+    fee_percent: Uint128,
+) -> StdResult<TokenAmount> {
+    let mut fee_amounts: HashMap<TokenId, Uint128> = HashMap::new();
+    let input_amounts_total = get_token_total_amount(&TokenAmount::Multiple(input_amounts.clone()));
+    let mut fee_amount_left =
+        get_single_protocol_fee_amount(input_amounts_total, fee_percent)?.get_single();
+
+    while !fee_amount_left.is_zero() {
+        let fee_per_token = fee_amount_left
+            .checked_div(Uint128::from(input_amounts.len() as u32))
+            .map_err(StdError::divide_by_zero)?;
+
+        for (token_id, token_amount) in input_amounts.clone().into_iter() {
+            if fee_amount_left.is_zero() {
+                break;
             }
 
-            Ok(Some(TokenAmount::Multiple(amounts)))
+            let mut taken_fee_per_token = *fee_amounts.get(&token_id).unwrap_or(&Uint128::zero());
+            if taken_fee_per_token == token_amount {
+                continue;
+            }
+
+            let token_amount_left = token_amount - taken_fee_per_token;
+            let token_supply = if fee_per_token.is_zero() {
+                fee_amount_left
+            } else {
+                fee_per_token
+            };
+
+            if token_amount_left >= token_supply {
+                taken_fee_per_token += token_supply;
+
+                if fee_per_token.is_zero() {
+                    fee_amount_left = Uint128::zero();
+                } else {
+                    fee_amount_left -= fee_per_token;
+                }
+            } else {
+                taken_fee_per_token += token_amount_left;
+                fee_amount_left -= token_amount_left;
+            }
+
+            fee_amounts.insert(token_id, taken_fee_per_token);
         }
-        TokenAmount::Single(amount) => Ok(Some(TokenAmount::Single(
-            amount
-                .full_mul(fee_percent)
-                .checked_div(Uint256::from(FEE_SCALE_FACTOR))
-                .map_err(StdError::divide_by_zero)?
-                .try_into()?,
-        ))),
     }
+
+    Ok(TokenAmount::Multiple(fee_amounts))
+}
+
+fn get_single_protocol_fee_amount(
+    input_amount: Uint128,
+    fee_percent: Uint128,
+) -> StdResult<TokenAmount> {
+    Ok(TokenAmount::Single(
+        input_amount
+            .full_mul(fee_percent)
+            .checked_div(Uint256::from(FEE_SCALE_FACTOR))
+            .map_err(StdError::divide_by_zero)?
+            .try_into()?,
+    ))
 }
 
 fn get_amount_without_fee(

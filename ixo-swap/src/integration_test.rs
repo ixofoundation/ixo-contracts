@@ -1174,13 +1174,13 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let add_liquidity_msg = ExecuteMsg::AddLiquidity {
         token1155_amounts: HashMap::from([
-            (token_ids[0].clone(), Uint128::new(70)),
+            (token_ids[0].clone(), Uint128::new(45)),
             (token_ids[1].clone(), Uint128::new(30)),
             (token_ids[2].clone(), Uint128::new(50)),
             (token_ids[3].clone(), Uint128::new(10)),
         ]),
-        min_liquidity: Uint128::new(160),
-        max_token2: Uint128::new(160),
+        min_liquidity: Uint128::new(135),
+        max_token2: Uint128::new(135),
         expiration: None,
     };
     let _res = router
@@ -1190,7 +1190,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
             &add_liquidity_msg,
             &[Coin {
                 denom: NATIVE_TOKEN_DENOM.into(),
-                amount: Uint128::new(160),
+                amount: Uint128::new(135),
             }],
         )
         .unwrap();
@@ -1201,7 +1201,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         owner_balance,
         [
-            Uint128::new(4930),
+            Uint128::new(4955),
             Uint128::new(4970),
             Uint128::new(4950),
             Uint128::new(4990)
@@ -1211,7 +1211,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         token_supplies,
         [
-            Uint128::new(70),
+            Uint128::new(45),
             Uint128::new(30),
             Uint128::new(50),
             Uint128::new(10)
@@ -1222,19 +1222,19 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         amm_balances,
         [
-            Uint128::new(70),
+            Uint128::new(45),
             Uint128::new(30),
             Uint128::new(50),
             Uint128::new(10)
         ]
     );
     let crust_balance = lp_token.balance(&router.wrap(), owner.clone()).unwrap();
-    assert_eq!(crust_balance, Uint128::new(160));
+    assert_eq!(crust_balance, Uint128::new(135));
 
     // remove liquidity for specific cw1155 tokens
     let allowance_msg = Cw20ExecuteMsg::IncreaseAllowance {
         spender: amm_addr.to_string(),
-        amount: Uint128::new(90u128),
+        amount: Uint128::new(80u128),
         expires: None,
     };
     let _res = router
@@ -1242,12 +1242,12 @@ fn remove_liquidity_with_partially_and_any_filling() {
         .unwrap();
 
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
-        amount: Uint128::new(90),
+        amount: Uint128::new(80),
         min_token1155: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(60)),
-            (token_ids[1].clone(), Uint128::new(20)),
+            (token_ids[0].clone(), Uint128::new(40)),
+            (token_ids[1].clone(), Uint128::new(30)),
         ])),
-        min_token2: Uint128::new(90),
+        min_token2: Uint128::new(80),
         expiration: None,
     };
     let _res = router
@@ -1260,8 +1260,8 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         owner_balance,
         [
-            Uint128::new(4995),
-            Uint128::new(4995),
+            Uint128::new(5000),
+            Uint128::new(5000),
             Uint128::new(4950),
             Uint128::new(4990)
         ]
@@ -1270,8 +1270,8 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         token_supplies,
         [
-            Uint128::new(5),
-            Uint128::new(5),
+            Uint128::new(0),
+            Uint128::new(0),
             Uint128::new(50),
             Uint128::new(10)
         ]
@@ -1281,19 +1281,19 @@ fn remove_liquidity_with_partially_and_any_filling() {
     assert_eq!(
         amm_balances,
         [
-            Uint128::new(5),
-            Uint128::new(5),
+            Uint128::new(0),
+            Uint128::new(0),
             Uint128::new(50),
             Uint128::new(10)
         ]
     );
     let crust_balance = lp_token.balance(&router.wrap(), owner.clone()).unwrap();
-    assert_eq!(crust_balance, Uint128::new(70));
+    assert_eq!(crust_balance, Uint128::new(55));
 
     // remove liquidity for any cw1155 tokens
     let allowance_msg = Cw20ExecuteMsg::IncreaseAllowance {
         spender: amm_addr.to_string(),
-        amount: Uint128::new(70u128),
+        amount: Uint128::new(55u128),
         expires: None,
     };
     let _res = router
@@ -1301,7 +1301,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
         .unwrap();
 
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
-        amount: Uint128::new(70),
+        amount: Uint128::new(55),
         min_token1155: TokenAmount::Single(Uint128::new(30)),
         min_token2: Uint128::new(30),
         expiration: None,
@@ -1319,7 +1319,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
             Uint128::new(5000),
             Uint128::new(5000),
             Uint128::new(5000),
-            Uint128::new(5000)
+            Uint128::new(4995)
         ]
     );
     let token_supplies = get_owner_lp_tokens_balance(&router, &amm_addr, &token_ids).supplies;
@@ -1329,7 +1329,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
             Uint128::new(0),
             Uint128::new(0),
             Uint128::new(0),
-            Uint128::new(0)
+            Uint128::new(5)
         ]
     );
     let amm_balances =
@@ -1340,7 +1340,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
             Uint128::new(0),
             Uint128::new(0),
             Uint128::new(0),
-            Uint128::new(0)
+            Uint128::new(5)
         ]
     );
     let crust_balance = lp_token.balance(&router.wrap(), owner.clone()).unwrap();
