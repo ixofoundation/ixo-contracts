@@ -129,11 +129,9 @@ impl TokenAmount {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, str::FromStr};
+    use std::str::FromStr;
 
-    use cosmwasm_std::{Decimal, Uint128};
-
-    use crate::token_amount::TokenAmount;
+    use super::*;
 
     #[test]
     fn should_return_fee_amount_when_single_input_token_provided() {
