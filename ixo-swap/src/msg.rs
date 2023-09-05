@@ -6,6 +6,8 @@ use cw1155::TokenId;
 use cw20::{BalanceResponse, Expiration};
 use serde::{Deserialize, Serialize};
 
+use crate::token_amount::TokenAmount;
+
 #[cw_serde]
 pub struct InstantiateMsg {
     pub token1155_denom: Denom,
@@ -29,32 +31,6 @@ pub enum Denom {
 pub enum TokenSelect {
     Token1155,
     Token2,
-}
-
-#[cw_serde]
-pub enum TokenAmount {
-    Multiple(HashMap<TokenId, Uint128>),
-    Single(Uint128),
-}
-
-impl TokenAmount {
-    pub fn get_multiple(&self) -> HashMap<TokenId, Uint128> {
-        match self {
-            TokenAmount::Multiple(amounts) => amounts.clone(),
-            TokenAmount::Single(e) => {
-                panic!("{}: {:?}", "Incompatible amount", &e)
-            }
-        }
-    }
-
-    pub fn get_single(&self) -> Uint128 {
-        match self {
-            TokenAmount::Single(amount) => amount.clone(),
-            TokenAmount::Multiple(e) => {
-                panic!("{}: {:?}", "Incompatible amount", &e)
-            }
-        }
-    }
 }
 
 #[cw_serde]
@@ -120,15 +96,6 @@ pub enum QueryMsg {
     Fee {},
     #[returns(TokenSuppliesResponse)]
     TokenSupplies { tokens_id: Vec<TokenId> },
-}
-
-#[cw_serde]
-pub struct MigrateMsg {
-    pub owner: Option<String>,
-    pub protocol_fee_recipient: String,
-    pub protocol_fee_percent: Decimal,
-    pub lp_fee_percent: Decimal,
-    pub freeze_pool: bool,
 }
 
 #[cw_serde]

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use cosmwasm_std::{
     attr, entry_point, to_binary, Addr, Binary, BlockInfo, Coin, CosmosMsg, Decimal, Deps, DepsMut,
     Env, MessageInfo, Order, QueryRequest, Reply, Response, StdError, StdResult, Storage, SubMsg,
-    Uint128, Uint256, Uint512, WasmMsg,
+    Uint128, Uint512, WasmMsg,
 };
 use cw1155::{Cw1155ExecuteMsg, TokenId};
 use cw2::set_contract_version;
@@ -16,23 +16,21 @@ use prost::Message;
 
 use crate::error::ContractError;
 use crate::msg::{
-    Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, MigrateMsg, QueryMsg,
+    Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, QueryMsg,
     QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
-    Token2ForToken1155PriceResponse, TokenAmount, TokenSelect, TokenSuppliesResponse,
+    Token2ForToken1155PriceResponse, TokenSelect, TokenSuppliesResponse,
 };
 use crate::state::{
     Fees, Token, FEES, FROZEN, LP_ADDRESS, OWNER, TOKEN1155, TOKEN2, TOKEN_SUPPLIES,
 };
+use crate::token_amount::TokenAmount;
+use crate::utils::{decimal_to_uint128, MAX_PERCENT, SCALE_FACTOR};
 
 // Version info for migration info
 pub const CONTRACT_NAME: &str = "crates.io:wasmswap";
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_LP_TOKEN_REPLY_ID: u64 = 0;
-
-const FEE_SCALE_FACTOR: Uint128 = Uint128::new(10_000);
-const MAX_FEE_PERCENT: &str = "1";
-const FEE_DECIMAL_PRECISION: Uint128 = Uint128::new(10u128.pow(20));
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
@@ -62,7 +60,7 @@ pub fn instantiate(
 
     let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
     let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(MAX_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -294,18 +292,6 @@ fn get_token2_amount_required(
     }
 }
 
-fn get_token_total_amount(token_amount: &TokenAmount) -> Uint128 {
-    match token_amount {
-        TokenAmount::Multiple(amounts) => amounts
-            .clone()
-            .into_iter()
-            .map(|(_, amount)| amount)
-            .reduce(|acc, e| acc + e)
-            .unwrap(),
-        TokenAmount::Single(amount) => *amount,
-    }
-}
-
 pub fn execute_add_liquidity(
     deps: DepsMut,
     info: &MessageInfo,
@@ -325,7 +311,7 @@ pub fn execute_add_liquidity(
     validate_input_amount(&info.funds, &TokenAmount::Single(max_token2), &token2.denom)?;
 
     let token1155_total_amount =
-        get_token_total_amount(&TokenAmount::Multiple(token1155_amounts.clone()));
+        TokenAmount::Multiple(token1155_amounts.clone()).get_total_amount();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
         get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
@@ -583,7 +569,7 @@ pub fn execute_update_config(
     OWNER.save(deps.storage, &new_owner_addr)?;
 
     let total_fee_percent = lp_fee_percent + protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(MAX_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -632,7 +618,7 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    let min_token1155_total_amount = get_token_total_amount(&min_token1155);
+    let min_token1155_total_amount = min_token1155.get_total_amount();
     let token1155_amount = amount
         .checked_mul(token1155.reserve)
         .map_err(StdError::overflow)?
@@ -721,7 +707,7 @@ fn get_token_amounts_to_transfer(
         TokenAmount::Multiple(amounts) => {
             let mut token1155_supplies: HashMap<TokenId, Uint128> = HashMap::new();
 
-            for (token_id, token_amount) in amounts.clone().into_iter() {
+            for (token_id, token_amount) in amounts.into_iter() {
                 let token_supply = TOKEN_SUPPLIES
                     .may_load(storage, token_id.clone())?
                     .unwrap_or_default();
@@ -751,6 +737,10 @@ fn get_token_amounts_to_transfer(
                     .map_err(StdError::divide_by_zero)?;
 
                 for (token_id, token_amount) in token1155_supplies.clone().into_iter() {
+                    if token1155_amount_left_to_transfer.is_zero() {
+                        break;
+                    }
+
                     let mut optional_additional_amount = None;
                     let mut optional_supplies = None;
                     if !additional_amount_to_transfer.is_zero() {
@@ -922,15 +912,6 @@ fn get_fee_transfer_msg(
     }
 }
 
-fn fee_decimal_to_uint128(decimal: Decimal) -> StdResult<Uint128> {
-    let result: Uint128 = decimal
-        .atomics()
-        .checked_mul(FEE_SCALE_FACTOR)
-        .map_err(StdError::overflow)?;
-
-    Ok(result / FEE_DECIMAL_PRECISION)
-}
-
 fn get_input_price(
     input_amount: Uint128,
     input_reserve: Uint128,
@@ -941,14 +922,14 @@ fn get_input_price(
         return Err(StdError::generic_err("No liquidity"));
     };
 
-    let fee_percent = fee_decimal_to_uint128(fee_percent)?;
-    let fee_reduction_percent = FEE_SCALE_FACTOR - fee_percent;
+    let fee_percent = decimal_to_uint128(fee_percent)?;
+    let fee_reduction_percent = SCALE_FACTOR - fee_percent;
     let input_amount_with_fee = Uint512::from(input_amount.full_mul(fee_reduction_percent));
     let numerator = input_amount_with_fee
         .checked_mul(Uint512::from(output_reserve))
         .map_err(StdError::overflow)?;
     let denominator = Uint512::from(input_reserve)
-        .checked_mul(Uint512::from(FEE_SCALE_FACTOR))
+        .checked_mul(Uint512::from(SCALE_FACTOR))
         .map_err(StdError::overflow)?
         .checked_add(input_amount_with_fee)
         .map_err(StdError::overflow)?;
@@ -957,90 +938,6 @@ fn get_input_price(
         .checked_div(denominator)
         .map_err(StdError::divide_by_zero)?
         .try_into()?)
-}
-
-fn get_protocol_fee_amount(
-    input_amount: &TokenAmount,
-    fee_percent: Decimal,
-) -> StdResult<Option<TokenAmount>> {
-    if fee_percent.is_zero() {
-        return Ok(None);
-    }
-
-    let fee_percent = fee_decimal_to_uint128(fee_percent)?;
-    match input_amount.clone() {
-        TokenAmount::Multiple(amounts) => Ok(Some(get_multiple_protocol_fee_amount(
-            amounts,
-            fee_percent,
-        )?)),
-        TokenAmount::Single(amount) => {
-            Ok(Some(get_single_protocol_fee_amount(amount, fee_percent)?))
-        }
-    }
-}
-
-fn get_multiple_protocol_fee_amount(
-    input_amounts: HashMap<String, Uint128>,
-    fee_percent: Uint128,
-) -> StdResult<TokenAmount> {
-    let mut fee_amounts: HashMap<TokenId, Uint128> = HashMap::new();
-    let input_amounts_total = get_token_total_amount(&TokenAmount::Multiple(input_amounts.clone()));
-    let mut fee_amount_left =
-        get_single_protocol_fee_amount(input_amounts_total, fee_percent)?.get_single();
-
-    while !fee_amount_left.is_zero() {
-        let fee_per_token = fee_amount_left
-            .checked_div(Uint128::from(input_amounts.len() as u32))
-            .map_err(StdError::divide_by_zero)?;
-
-        for (token_id, token_amount) in input_amounts.clone().into_iter() {
-            if fee_amount_left.is_zero() {
-                break;
-            }
-
-            let mut taken_fee_per_token = *fee_amounts.get(&token_id).unwrap_or(&Uint128::zero());
-            if taken_fee_per_token == token_amount {
-                continue;
-            }
-
-            let token_amount_left = token_amount - taken_fee_per_token;
-            let token_supply = if fee_per_token.is_zero() {
-                fee_amount_left
-            } else {
-                fee_per_token
-            };
-
-            if token_amount_left >= token_supply {
-                taken_fee_per_token += token_supply;
-
-                if fee_per_token.is_zero() {
-                    fee_amount_left = Uint128::zero();
-                } else {
-                    fee_amount_left -= fee_per_token;
-                }
-            } else {
-                taken_fee_per_token += token_amount_left;
-                fee_amount_left -= token_amount_left;
-            }
-
-            fee_amounts.insert(token_id, taken_fee_per_token);
-        }
-    }
-
-    Ok(TokenAmount::Multiple(fee_amounts))
-}
-
-fn get_single_protocol_fee_amount(
-    input_amount: Uint128,
-    fee_percent: Uint128,
-) -> StdResult<TokenAmount> {
-    Ok(TokenAmount::Single(
-        input_amount
-            .full_mul(fee_percent)
-            .checked_div(Uint256::from(FEE_SCALE_FACTOR))
-            .map_err(StdError::divide_by_zero)?
-            .try_into()?,
-    ))
 }
 
 fn get_amount_without_fee(
@@ -1109,7 +1006,7 @@ pub fn execute_swap(
 
     validate_input_amount(&info.funds, &input_amount, &input_token.denom)?;
 
-    let input_amount_total = get_token_total_amount(&input_amount);
+    let input_amount_total = input_amount.get_total_amount();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let mut token_bought = get_input_price(
@@ -1119,7 +1016,7 @@ pub fn execute_swap(
         total_fee_percent,
     )?;
 
-    let min_token_total = get_token_total_amount(&min_token);
+    let min_token_total = min_token.get_total_amount();
     if min_token_total > token_bought {
         return Err(ContractError::SwapMinError {
             min: min_token_total,
@@ -1127,7 +1024,7 @@ pub fn execute_swap(
         });
     }
     // Calculate fees
-    let protocol_fee_amount = get_protocol_fee_amount(&input_amount, fees.protocol_fee_percent)?;
+    let protocol_fee_amount = input_amount.get_percent_from_amount(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_amount, protocol_fee_amount.clone());
 
@@ -1164,8 +1061,7 @@ pub fn execute_swap(
         Denom::Cw1155(addr, _) => {
             let tokens_to_transfer =
                 get_token_amounts_to_transfer(deps.storage, token_bought, min_token)?;
-            token_bought =
-                get_token_total_amount(&TokenAmount::Multiple(tokens_to_transfer.clone()));
+            token_bought = TokenAmount::Multiple(tokens_to_transfer.clone()).get_total_amount();
 
             get_cw1155_transfer_msg(
                 &env.contract.address,
@@ -1182,7 +1078,7 @@ pub fn execute_swap(
         deps.storage,
         |mut input_token| -> Result<_, ContractError> {
             let input_amount_without_protocol_fee_total =
-                get_token_total_amount(&input_amount_without_protocol_fee);
+                input_amount_without_protocol_fee.get_total_amount();
             input_token.reserve = input_token
                 .reserve
                 .checked_add(input_amount_without_protocol_fee_total)
@@ -1250,7 +1146,7 @@ pub fn execute_pass_through_swap(
 
     validate_input_amount(&info.funds, &input_token_amount, &input_token.denom)?;
 
-    let input_token_amount_total = get_token_total_amount(&input_token_amount);
+    let input_token_amount_total = input_token_amount.get_total_amount();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let amount_to_transfer = get_input_price(
@@ -1262,7 +1158,7 @@ pub fn execute_pass_through_swap(
 
     // Calculate fees
     let protocol_fee_amount =
-        get_protocol_fee_amount(&input_token_amount, fees.protocol_fee_percent)?;
+        input_token_amount.get_percent_from_amount(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_token_amount, protocol_fee_amount.clone());
 
@@ -1344,7 +1240,7 @@ pub fn execute_pass_through_swap(
     input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         // Add input amount - protocol fee to input token reserve
         let input_amount_without_protocol_fee_total =
-            get_token_total_amount(&input_amount_without_protocol_fee);
+            input_amount_without_protocol_fee.get_total_amount();
         token.reserve = token
             .reserve
             .checked_add(input_amount_without_protocol_fee_total)
@@ -1444,7 +1340,7 @@ pub fn query_token1155_for_token2_price(
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let token1155_amount_total = get_token_total_amount(&token1155_amount);
+    let token1155_amount_total = token1155_amount.get_total_amount();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token2_amount = get_input_price(
@@ -1464,7 +1360,7 @@ pub fn query_token2_for_token1155_price(
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let token2_amount_total = get_token_total_amount(&token2_amount);
+    let token2_amount_total = token2_amount.get_total_amount();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token1155_amount = get_input_price(
@@ -1509,43 +1405,14 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
     }
 }
 
-#[cfg_attr(not(feature = "library"), entry_point)]
-pub fn migrate(deps: DepsMut, _env: Env, msg: MigrateMsg) -> Result<Response, ContractError> {
-    let owner = match msg.owner {
-        None => None,
-        Some(o) => Some(deps.api.addr_validate(&o)?),
-    };
-    OWNER.save(deps.storage, &owner)?;
-
-    let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
-    let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
-    if total_fee_percent > max_fee_percent {
-        return Err(ContractError::FeesTooHigh {
-            max_fee_percent,
-            total_fee_percent,
-        });
-    }
-
-    let fees = Fees {
-        lp_fee_percent: msg.lp_fee_percent,
-        protocol_fee_percent: msg.protocol_fee_percent,
-        protocol_fee_recipient,
-    };
-    FEES.save(deps.storage, &fees)?;
-
-    // By default deposits are not frozen
-    FROZEN.save(deps.storage, &msg.freeze_pool)?;
-
-    Ok(Response::default())
-}
-
 #[cfg(test)]
 mod tests {
+    use cosmwasm_std::testing::mock_dependencies;
+
     use super::*;
 
     #[test]
-    fn test_get_liquidity_amount() {
+    fn should_return_lp_token_amount() {
         let liquidity =
             get_lp_token_amount_to_mint(Uint128::new(100), Uint128::zero(), Uint128::zero())
                 .unwrap();
@@ -1558,7 +1425,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_token_amount() {
+    fn should_return_token_amount() {
         let liquidity = get_token2_amount_required(
             Uint128::new(100),
             Uint128::new(50),
@@ -1581,7 +1448,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_input_price() {
+    fn should_return_input_price() {
         let fee_percent = Decimal::from_str("0.3").unwrap();
         // Base case
         assert_eq!(
@@ -1594,6 +1461,11 @@ mod tests {
             .unwrap(),
             Uint128::new(9)
         );
+    }
+
+    #[test]
+    fn should_fail_returning_input_price() {
+        let fee_percent = Decimal::from_str("0.3").unwrap();
 
         // No input reserve error
         let err = get_input_price(
@@ -1624,5 +1496,151 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, StdError::generic_err("No liquidity"));
+    }
+
+    #[test]
+    fn should_fail_returning_token_amounts_to_transfer_when_insufficient_supply_of_min_token() {
+        let mut deps = mock_dependencies();
+
+        let token_id = "1".to_string();
+        let token_amounts = HashMap::from([(token_id.clone(), Uint128::new(100))]);
+
+        TOKEN_SUPPLIES
+            .save(&mut deps.storage, token_id.clone(), &Uint128::new(1))
+            .unwrap();
+
+        let err = get_token_amounts_to_transfer(
+            &mut deps.storage,
+            Uint128::new(500),
+            TokenAmount::Multiple(token_amounts.clone()),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            ContractError::MinToken1155Error {
+                available: Uint128::new(1),
+                requested: Uint128::new(100)
+            }
+        );
+    }
+
+    #[test]
+    fn should_return_token_amounts_to_transfer_when_multiple_input_token_provided() {
+        let mut deps = mock_dependencies();
+
+        let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+        let mut token_amounts = HashMap::new();
+        let mut token_supplies = HashMap::new();
+
+        for token_id in token_ids {
+            token_amounts.insert(token_id.clone(), Uint128::new(100));
+            token_supplies.insert(token_id.clone(), Uint128::new(1000));
+            TOKEN_SUPPLIES
+                .save(&mut deps.storage, token_id.clone(), &Uint128::new(1000))
+                .unwrap();
+        }
+
+        let token_amounts_to_transfer = get_token_amounts_to_transfer(
+            &mut deps.storage,
+            Uint128::new(500),
+            TokenAmount::Multiple(token_amounts.clone()),
+        )
+        .unwrap();
+
+        assert_token_supplies(
+            &mut deps.storage,
+            &token_amounts_to_transfer,
+            &token_supplies,
+        );
+        assert_eq!(
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            Uint128::new(500)
+        )
+    }
+
+    #[test]
+    fn should_return_partial_token_amounts_to_transfer_when_multiple_input_token_provided() {
+        let mut deps = mock_dependencies();
+
+        let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+        let mut token_amounts = HashMap::new();
+        let mut token_supplies = HashMap::new();
+
+        for (index, token_id) in token_ids.into_iter().enumerate() {
+            let token_index = Uint128::new(index as u128 + 1);
+            let token_amount = Uint128::new(100).checked_mul(token_index).unwrap();
+
+            token_amounts.insert(token_id.clone(), token_amount);
+            token_supplies.insert(token_id.clone(), token_amount);
+            TOKEN_SUPPLIES
+                .save(&mut deps.storage, token_id.clone(), &token_amount)
+                .unwrap();
+        }
+
+        let token_amounts_to_transfer = get_token_amounts_to_transfer(
+            &mut deps.storage,
+            Uint128::new(1000),
+            TokenAmount::Multiple(token_amounts.clone()),
+        )
+        .unwrap();
+
+        assert_token_supplies(
+            &mut deps.storage,
+            &token_amounts_to_transfer,
+            &token_supplies,
+        );
+        assert_eq!(
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            Uint128::new(600)
+        )
+    }
+
+    #[test]
+    fn should_return_any_token_amounts_to_transfer_when_single_input_token_provided() {
+        let mut deps = mock_dependencies();
+
+        let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+        let mut token_supplies = HashMap::new();
+
+        for token_id in token_ids {
+            token_supplies.insert(token_id.clone(), Uint128::new(1000));
+            TOKEN_SUPPLIES
+                .save(&mut deps.storage, token_id.clone(), &Uint128::new(1000))
+                .unwrap();
+        }
+
+        let token_amounts_to_transfer = get_token_amounts_to_transfer(
+            &mut deps.storage,
+            Uint128::new(500),
+            TokenAmount::Single(Uint128::new(300)),
+        )
+        .unwrap();
+
+        assert_token_supplies(
+            &mut deps.storage,
+            &token_amounts_to_transfer,
+            &token_supplies,
+        );
+        assert_eq!(
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            Uint128::new(500)
+        )
+    }
+
+    fn assert_token_supplies(
+        storage: &mut dyn Storage,
+        token_amounts: &HashMap<String, Uint128>,
+        token_supplies: &HashMap<String, Uint128>,
+    ) {
+        for (id, amount) in token_amounts {
+            let initial_token_supply = token_supplies.get(id).unwrap();
+            let updated_token_supply = TOKEN_SUPPLIES
+                .may_load(storage, id.clone())
+                .unwrap()
+                .unwrap_or(Uint128::zero());
+
+            assert_eq!(updated_token_supply + amount, initial_token_supply)
+        }
     }
 }
