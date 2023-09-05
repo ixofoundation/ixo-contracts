@@ -11,7 +11,7 @@ In this document will be discovered the execution of a contract.
 
 <br/>
 
-In order to execute the contract, we should send an appropriate message to the contract, in case of execution it should be `ExecuteMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:61:4:4:`pub enum ExecuteMsg {`"/>:
+In order to execute the contract, we should send an appropriate message to the contract, in case of execution it should be `ExecuteMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:37:4:4:`pub enum ExecuteMsg {`"/>:
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -22,7 +22,7 @@ In order to execute the contract, we should send an appropriate message to the c
 
 ## AddLiquidity
 
-In order to add some liquidity to pool we need to send `AddLiquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:62:1:1:`    AddLiquidity {`"/> message to a contract.
+In order to add some liquidity to pool we need to send `AddLiquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:38:1:1:`    AddLiquidity {`"/> message to a contract.
 
 ### Message
 
@@ -30,15 +30,15 @@ In order to add some liquidity to pool we need to send `AddLiquidity`<swm-token 
 
 Message consists of 3 mandatory fields:
 
-*   `token1155_amounts`<swm-token data-swm-token=":ixo-swap/src/msg.rs:63:1:1:`        token1155_amounts: HashMap&lt;TokenId, Uint128&gt;,`"/> - `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token amounts sender wants to add to the pool
+*   `token1155_amounts`<swm-token data-swm-token=":ixo-swap/src/msg.rs:39:1:1:`        token1155_amounts: HashMap&lt;TokenId, Uint128&gt;,`"/> - `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:27:1:1:`    Cw1155(Addr, String),`"/> token amounts sender wants to add to the pool
 
-*   `min_liquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:64:1:1:`        min_liquidity: Uint128,`"/> - minimum expected amount of liquidity sender is ready to receive
+*   `min_liquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:40:1:1:`        min_liquidity: Uint128,`"/> - minimum expected amount of liquidity sender is ready to receive
 
-*   `max_token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        max_token2: Uint128,`"/> - maximum expected amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> sender is ready to spend
+*   `max_token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:41:1:1:`        max_token2: Uint128,`"/> - maximum expected amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> sender is ready to spend
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -72,7 +72,7 @@ and 1 optional:
 
 ## RemoveLiquidity
 
-In order to remove liquidity from pool we need to send `RemoveLiquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:68:1:1:`    RemoveLiquidity {`"/> message to a contract.
+In order to remove liquidity from pool we need to send `RemoveLiquidity`<swm-token data-swm-token=":ixo-swap/src/msg.rs:44:1:1:`    RemoveLiquidity {`"/> message to a contract.
 
 ### Message
 
@@ -80,15 +80,15 @@ In order to remove liquidity from pool we need to send `RemoveLiquidity`<swm-tok
 
 Message consists of 3 mandatory fields:
 
-*   `amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        amount: Uint128,`"/> - liquidity amount sender wants to remove from the pool
+*   `amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:45:1:1:`        amount: Uint128,`"/> - liquidity amount sender wants to remove from the pool
 
-*   `min_token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:70:1:1:`        min_token1155: TokenAmount,`"/> - minimum expected amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> sedner is ready to receive. Could be either `Multiple`<swm-token data-swm-token=":ixo-swap/src/msg.rs:36:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>, where sender specify batches he wants to receive or `Single`<swm-token data-swm-token=":ixo-swap/src/msg.rs:37:1:1:`    Single(Uint128),`"/>, where sender only specify total amount, leaving the selection of batches to the contract
+*   `min_token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:46:1:1:`        min_token1155: TokenAmount,`"/> - minimum expected amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/> sedner is ready to receive. Could be either `Multiple`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:11:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>, where sender specify batches he wants to receive or `Single`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:12:1:1:`    Single(Uint128),`"/>, where sender only specify total amount, leaving the selection of batches to the contract
 
-*   `min_token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:71:1:1:`        min_token2: Uint128,`"/> - minimum expected amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> sender is ready to receive
+*   `min_token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:47:1:1:`        min_token2: Uint128,`"/> - minimum expected amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> sender is ready to receive
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -124,7 +124,7 @@ and 1 optional:
 
 ## Swap
 
-In order to swap tokens on single contract we need to send `Swap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:74:1:1:`    Swap {`"/> message to a contract.
+In order to swap tokens on single contract we need to send `Swap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:50:1:1:`    Swap {`"/> message to a contract.
 
 ### Message
 
@@ -132,23 +132,23 @@ In order to swap tokens on single contract we need to send `Swap`<swm-token data
 
 Message consists of 3 mandatory fields:
 
-*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> - selection of the token sender wants to swap
+*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/> - selection of the token sender wants to swap
 
-*   `input_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:76:1:1:`        input_amount: TokenAmount,`"/> - amount of selected `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/>. In case `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> is
+*   `input_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        input_amount: TokenAmount,`"/> - amount of selected `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/>. In case `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/> is
 
-    *   `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/>, amount should only be `Multiple`<swm-token data-swm-token=":ixo-swap/src/msg.rs:36:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>
+    *   `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/>, amount should only be `Multiple`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:11:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>
 
-    *   `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>, amount should only be `Single`<swm-token data-swm-token=":ixo-swap/src/msg.rs:37:1:1:`    Single(Uint128),`"/>
+    *   `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/>, amount should only be `Single`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:12:1:1:`    Single(Uint128),`"/>
 
-*   `min_output`<swm-token data-swm-token=":ixo-swap/src/msg.rs:77:1:1:`        min_output: TokenAmount,`"/> - minimum expected amount of another token from contract token pair, that means if `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> is `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/>, output will be `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> and vise versa. In case `min_output`<swm-token data-swm-token=":ixo-swap/src/msg.rs:77:1:1:`        min_output: TokenAmount,`"/> is
+*   `min_output`<swm-token data-swm-token=":ixo-swap/src/msg.rs:53:1:1:`        min_output: TokenAmount,`"/> - minimum expected amount of another token from contract token pair, that means if `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/> is `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/>, output will be `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> and vise versa. In case `min_output`<swm-token data-swm-token=":ixo-swap/src/msg.rs:53:1:1:`        min_output: TokenAmount,`"/> is
 
-    *   `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/>, amonut could be either `Multiple`<swm-token data-swm-token=":ixo-swap/src/msg.rs:36:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>, where sender specify batches he wants to receive or `Single`<swm-token data-swm-token=":ixo-swap/src/msg.rs:37:1:1:`    Single(Uint128),`"/>, where sender only specify total amount, leaving the selection of batches to the contract
+    *   `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/>, amonut could be either `Multiple`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:11:1:1:`    Multiple(HashMap&lt;TokenId, Uint128&gt;),`"/>, where sender specify batches he wants to receive or `Single`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:12:1:1:`    Single(Uint128),`"/>, where sender only specify total amount, leaving the selection of batches to the contract
 
-    *   `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>, amount should only be `Single`<swm-token data-swm-token=":ixo-swap/src/msg.rs:37:1:1:`    Single(Uint128),`"/>
+    *   `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/>, amount should only be `Single`<swm-token data-swm-token=":ixo-swap/src/token_amount.rs:12:1:1:`    Single(Uint128),`"/>
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -183,7 +183,7 @@ and 1 optional:
 
 ## SwapAndSendTo
 
-In order to swap tokens on single contract and send requested tokens to specific recipient we need to send `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:88:1:1:`    SwapAndSendTo {`"/> message to a contract.
+In order to swap tokens on single contract and send requested tokens to specific recipient we need to send `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:64:1:1:`    SwapAndSendTo {`"/> message to a contract.
 
 ### Message
 
@@ -191,13 +191,13 @@ In order to swap tokens on single contract and send requested tokens to specific
 
 Message consists of 4 mandatory fields:
 
-*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/>, `input_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:90:1:1:`        input_amount: TokenAmount,`"/>, `min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:92:1:1:`        min_token: TokenAmount,`"/> - see [Swap](https://app.swimm.io/workspaces/uD3gTrhLH5hUFWTf2PhX/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/lliydyku#heading-Z1uCKnx)
+*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/>, `input_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        input_amount: TokenAmount,`"/>, `min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:68:1:1:`        min_token: TokenAmount,`"/> - see [Swap](https://app.swimm.io/workspaces/uD3gTrhLH5hUFWTf2PhX/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/lliydyku#heading-Z1uCKnx)
 
-*   `recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:91:1:1:`        recipient: String,`"/> - address of the recipient, who will recieve the requested tokens
+*   `recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:67:1:1:`        recipient: String,`"/> - address of the recipient, who will recieve the requested tokens
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -231,9 +231,9 @@ and 1 optional:
 
 ## PassThroughSwap
 
-In order to swap token from one contract for token from another contract we need to send `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:81:1:1:`    PassThroughSwap {`"/> message to a contract.
+In order to swap token from one contract for token from another contract we need to send `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:57:1:1:`    PassThroughSwap {`"/> message to a contract.
 
-For better understanding how it goes, lets see an example. The first and second contract have `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> and `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> token pairs. It's essential for both contract to have the same `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> whether it `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> with same address or `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> with same denom. So, sender wants to swap `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token from first contract for `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token from the second contract, thus we need to send `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:81:1:1:`    PassThroughSwap {`"/> to the first contract. What contract does is firstly swap `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> for `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>, then send the `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:88:1:1:`    SwapAndSendTo {`"/> message to second contract with obtained `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> as `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:89:1:1:`        input_token: TokenSelect,`"/> after first swap, as both contract have same `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> we could easily swap it for `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token from second contract , what we actually do in `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:88:1:1:`    SwapAndSendTo {`"/> after all requested `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:85:1:1:`        output_min_token: TokenAmount,`"/> will be send to sender of the `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:81:1:1:`    PassThroughSwap {`"/> message.
+For better understanding how it goes, lets see an example. The first and second contract have `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:27:1:1:`    Cw1155(Addr, String),`"/> and `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:26:1:1:`    Cw20(Addr),`"/> token pairs. It's essential for both contract to have the same `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> whether it `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:26:1:1:`    Cw20(Addr),`"/> with same address or `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Native(String),`"/> with same denom. So, sender wants to swap `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:27:1:1:`    Cw1155(Addr, String),`"/> token from first contract for `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:27:1:1:`    Cw1155(Addr, String),`"/> token from the second contract, thus we need to send `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:57:1:1:`    PassThroughSwap {`"/> to the first contract. What contract does is firstly swap `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/> for `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/>, then send the `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:64:1:1:`    SwapAndSendTo {`"/> message to second contract with obtained `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> as `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/> after first swap, as both contract have same `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:33:1:1:`    Token2,`"/> we could easily swap it for `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:27:1:1:`    Cw1155(Addr, String),`"/> token from second contract , what we actually do in `SwapAndSendTo`<swm-token data-swm-token=":ixo-swap/src/msg.rs:64:1:1:`    SwapAndSendTo {`"/> after all requested `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:61:1:1:`        output_min_token: TokenAmount,`"/> will be send to sender of the `PassThroughSwap`<swm-token data-swm-token=":ixo-swap/src/msg.rs:57:1:1:`    PassThroughSwap {`"/> message.
 
 ### Message
 
@@ -241,15 +241,15 @@ For better understanding how it goes, lets see an example. The first and second 
 
 Message consists of 4 mandatory fields:
 
-*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        input_token: TokenSelect,`"/> - see [Swap](https://app.swimm.io/workspaces/uD3gTrhLH5hUFWTf2PhX/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/lliydyku#heading-Z1uCKnx)
+*   `input_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:65:1:1:`        input_token: TokenSelect,`"/> - see [Swap](https://app.swimm.io/workspaces/uD3gTrhLH5hUFWTf2PhX/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/lliydyku#heading-Z1uCKnx)
 
-*   `output_amm_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:82:1:1:`        output_amm_address: String,`"/> - address of the contract which has `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:85:1:1:`        output_min_token: TokenAmount,`"/>
+*   `output_amm_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:58:1:1:`        output_amm_address: String,`"/> - address of the contract which has `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:61:1:1:`        output_min_token: TokenAmount,`"/>
 
-*   `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:85:1:1:`        output_min_token: TokenAmount,`"/> - minimum expected amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> from `output_amm_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:82:1:1:`        output_amm_address: String,`"/>.
+*   `output_min_token`<swm-token data-swm-token=":ixo-swap/src/msg.rs:61:1:1:`        output_min_token: TokenAmount,`"/> - minimum expected amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:32:1:1:`    Token1155,`"/> from `output_amm_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:58:1:1:`        output_amm_address: String,`"/>.
 
 and 1 optional:
 
-*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:66:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
+*   `expiration`<swm-token data-swm-token=":ixo-swap/src/msg.rs:69:1:1:`        expiration: Option&lt;Expiration&gt;,`"/> - block height or timestamp when message is no longer valid
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -289,7 +289,7 @@ and 1 optional:
 
 ## UpdateConfig
 
-In order to update contract configuration we need to send `UpdateConfig`<swm-token data-swm-token=":ixo-swap/src/msg.rs:95:1:1:`    UpdateConfig {`"/> message to a contract.
+In order to update contract configuration we need to send `UpdateConfig`<swm-token data-swm-token=":ixo-swap/src/msg.rs:71:1:1:`    UpdateConfig {`"/> message to a contract.
 
 ### Message
 
@@ -297,15 +297,15 @@ In order to update contract configuration we need to send `UpdateConfig`<swm-tok
 
 Message consists of 3 mandatory fields:
 
-*   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:97:1:1:`        lp_fee_percent: Decimal,`"/> - a contract fee percent for every swap
+*   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:73:1:1:`        lp_fee_percent: Decimal,`"/> - a contract fee percent for every swap
 
-*   `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:98:1:1:`        protocol_fee_percent: Decimal,`"/> - a fee that sends to `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:98:1:1:`        protocol_fee_percent: Decimal,`"/> for every swap
+*   `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:74:1:1:`        protocol_fee_percent: Decimal,`"/> - a fee that sends to `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:74:1:1:`        protocol_fee_percent: Decimal,`"/> for every swap
 
-*   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:99:1:1:`        protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:99:1:1:`        protocol_fee_recipient: String,`"/> for every swap
+*   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:75:1:1:`        protocol_fee_recipient: String,`"/> for every swap
 
 and 1 optional:
 
-*   `owner`<swm-token data-swm-token=":ixo-swap/src/msg.rs:96:1:1:`        owner: Option&lt;String&gt;,`"/> - owner of a contract
+*   `owner`<swm-token data-swm-token=":ixo-swap/src/msg.rs:72:1:1:`        owner: Option&lt;String&gt;,`"/> - owner of a contract
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -334,7 +334,7 @@ and 1 optional:
 
 ## FreezeDeposits
 
-In order to freeze or unfreeze deposits we need to send `FreezeDeposits`<swm-token data-swm-token=":ixo-swap/src/msg.rs:102:1:1:`    FreezeDeposits {`"/> message to a contract.
+In order to freeze or unfreeze deposits we need to send `FreezeDeposits`<swm-token data-swm-token=":ixo-swap/src/msg.rs:78:1:1:`    FreezeDeposits {`"/> message to a contract.
 
 ### Message
 
@@ -342,7 +342,7 @@ In order to freeze or unfreeze deposits we need to send `FreezeDeposits`<swm-tok
 
 Message consists of 1 mandatory field:
 
-*   `freeze`<swm-token data-swm-token=":ixo-swap/src/msg.rs:103:1:1:`        freeze: bool,`"/> - freeze status
+*   `freeze`<swm-token data-swm-token=":ixo-swap/src/msg.rs:79:1:1:`        freeze: bool,`"/> - freeze status
 <!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
 ### 📄 ixo-swap/src/msg.rs
 ```renderscript
@@ -362,8 +362,6 @@ Message consists of 1 mandatory field:
    }
 }
 ```
-
-<br/>
 
 <br/>
 
