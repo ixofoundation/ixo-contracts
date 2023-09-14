@@ -804,7 +804,7 @@ fn update_token_amounts(
         token_supply = token_amount;
     }
 
-    let mut remaining_supply = Uint128::zero();
+    let remaining_supply;
     if token_amount >= token_supply {
         amount_to_transfer += token_supply;
         remaining_supply = token_amount - token_supply;
@@ -816,6 +816,7 @@ fn update_token_amounts(
         }
     } else {
         amount_to_transfer += token_amount;
+        remaining_supply = Uint128::zero();
         *token_amount_left_to_transfer -= token_amount;
     }
 
