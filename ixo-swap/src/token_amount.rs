@@ -67,56 +67,53 @@ impl TokenAmount {
     ) -> StdResult<TokenAmount> {
         let mut amounts: HashMap<TokenId, Uint128> = HashMap::new();
         let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total();
-        let mut amount_left =
+        let mut fee_amount_left =
             Self::get_percent_from_single(input_amounts_total, percent)?.get_single();
 
-        while !amount_left.is_zero() {
-            let amount_per_token = amount_left
+        while !fee_amount_left.is_zero() {
+            let fee_amount_per_token = fee_amount_left
                 .checked_div(Uint128::from(input_amounts.len() as u32))
                 .map_err(StdError::divide_by_zero)?;
 
             for (token_id, token_amount) in input_amounts.clone().into_iter() {
-                if amount_left.is_zero() {
+                if fee_amount_left.is_zero() {
                     break;
                 }
 
-                let mut taken_amount_per_token =
+                let mut taken_fee_amount_per_token =
                     *amounts.get(&token_id).unwrap_or(&Uint128::zero());
-                if taken_amount_per_token == token_amount {
+                if taken_fee_amount_per_token == token_amount {
                     continue;
                 }
 
-                let token_amount_left = token_amount - taken_amount_per_token;
-                let token_supply = if amount_per_token.is_zero() {
-                    amount_left
+                let token_amount_left = token_amount - taken_fee_amount_per_token;
+                let fee_amount = if fee_amount_per_token.is_zero() {
+                    fee_amount_left
                 } else {
-                    amount_per_token
+                    fee_amount_per_token
                 };
 
-                if token_amount_left >= token_supply {
-                    taken_amount_per_token += token_supply;
+                if token_amount_left >= fee_amount {
+                    taken_fee_amount_per_token += fee_amount;
 
-                    if amount_per_token.is_zero() {
-                        amount_left = Uint128::zero();
+                    if fee_amount_per_token.is_zero() {
+                        fee_amount_left = Uint128::zero();
                     } else {
-                        amount_left -= amount_per_token;
+                        fee_amount_left -= fee_amount_per_token;
                     }
                 } else {
-                    taken_amount_per_token += token_amount_left;
-                    amount_left -= token_amount_left;
+                    taken_fee_amount_per_token += token_amount_left;
+                    fee_amount_left -= token_amount_left;
                 }
 
-                amounts.insert(token_id, taken_amount_per_token);
+                amounts.insert(token_id, taken_fee_amount_per_token);
             }
         }
 
         Ok(TokenAmount::Multiple(amounts))
     }
 
-    fn get_percent_from_single(
-        input_amount: Uint128,
-        percent: Uint128,
-    ) -> StdResult<TokenAmount> {
+    fn get_percent_from_single(input_amount: Uint128, percent: Uint128) -> StdResult<TokenAmount> {
         Ok(TokenAmount::Single(
             input_amount
                 .full_mul(percent)

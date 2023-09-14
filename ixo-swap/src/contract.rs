@@ -310,8 +310,7 @@ pub fn execute_add_liquidity(
     validate_token1155_denom(&deps, &token1155.denom, &token1155_amounts)?;
     validate_input_amount(&info.funds, &TokenAmount::Single(max_token2), &token2.denom)?;
 
-    let token1155_total_amount =
-        TokenAmount::Multiple(token1155_amounts.clone()).get_total();
+    let token1155_total_amount = TokenAmount::Multiple(token1155_amounts.clone()).get_total();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
         get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
@@ -1158,8 +1157,7 @@ pub fn execute_pass_through_swap(
     )?;
 
     // Calculate fees
-    let protocol_fee_amount =
-        input_token_amount.get_percent(fees.protocol_fee_percent)?;
+    let protocol_fee_amount = input_token_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_token_amount, protocol_fee_amount.clone());
 
@@ -1240,8 +1238,7 @@ pub fn execute_pass_through_swap(
 
     input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         // Add input amount - protocol fee to input token reserve
-        let input_amount_without_protocol_fee_total =
-            input_amount_without_protocol_fee.get_total();
+        let input_amount_without_protocol_fee_total = input_amount_without_protocol_fee.get_total();
         token.reserve = token
             .reserve
             .checked_add(input_amount_without_protocol_fee_total)
