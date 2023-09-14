@@ -27,7 +27,7 @@ use crate::token_amount::TokenAmount;
 use crate::utils::{decimal_to_uint128, MAX_PERCENT, SCALE_FACTOR};
 
 // Version info for migration info
-pub const CONTRACT_NAME: &str = "crates.io:wasmswap";
+pub const CONTRACT_NAME: &str = "crates.io:ixoswap";
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const INSTANTIATE_LP_TOKEN_REPLY_ID: u64 = 0;
