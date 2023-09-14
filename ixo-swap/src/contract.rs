@@ -311,7 +311,7 @@ pub fn execute_add_liquidity(
     validate_input_amount(&info.funds, &TokenAmount::Single(max_token2), &token2.denom)?;
 
     let token1155_total_amount =
-        TokenAmount::Multiple(token1155_amounts.clone()).get_total_amount();
+        TokenAmount::Multiple(token1155_amounts.clone()).get_total();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
         get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
@@ -618,7 +618,7 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    let min_token1155_total_amount = min_token1155.get_total_amount();
+    let min_token1155_total_amount = min_token1155.get_total();
     let token1155_amount = amount
         .checked_mul(token1155.reserve)
         .map_err(StdError::overflow)?
@@ -1007,7 +1007,7 @@ pub fn execute_swap(
 
     validate_input_amount(&info.funds, &input_amount, &input_token.denom)?;
 
-    let input_amount_total = input_amount.get_total_amount();
+    let input_amount_total = input_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let mut token_bought = get_input_price(
@@ -1017,7 +1017,7 @@ pub fn execute_swap(
         total_fee_percent,
     )?;
 
-    let min_token_total = min_token.get_total_amount();
+    let min_token_total = min_token.get_total();
     if min_token_total > token_bought {
         return Err(ContractError::SwapMinError {
             min: min_token_total,
@@ -1025,7 +1025,7 @@ pub fn execute_swap(
         });
     }
     // Calculate fees
-    let protocol_fee_amount = input_amount.get_percent_from_amount(fees.protocol_fee_percent)?;
+    let protocol_fee_amount = input_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_amount, protocol_fee_amount.clone());
 
@@ -1062,7 +1062,7 @@ pub fn execute_swap(
         Denom::Cw1155(addr, _) => {
             let tokens_to_transfer =
                 get_token_amounts_to_transfer(deps.storage, token_bought, min_token)?;
-            token_bought = TokenAmount::Multiple(tokens_to_transfer.clone()).get_total_amount();
+            token_bought = TokenAmount::Multiple(tokens_to_transfer.clone()).get_total();
 
             get_cw1155_transfer_msg(
                 &env.contract.address,
@@ -1079,7 +1079,7 @@ pub fn execute_swap(
         deps.storage,
         |mut input_token| -> Result<_, ContractError> {
             let input_amount_without_protocol_fee_total =
-                input_amount_without_protocol_fee.get_total_amount();
+                input_amount_without_protocol_fee.get_total();
             input_token.reserve = input_token
                 .reserve
                 .checked_add(input_amount_without_protocol_fee_total)
@@ -1147,7 +1147,7 @@ pub fn execute_pass_through_swap(
 
     validate_input_amount(&info.funds, &input_token_amount, &input_token.denom)?;
 
-    let input_token_amount_total = input_token_amount.get_total_amount();
+    let input_token_amount_total = input_token_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let amount_to_transfer = get_input_price(
@@ -1159,7 +1159,7 @@ pub fn execute_pass_through_swap(
 
     // Calculate fees
     let protocol_fee_amount =
-        input_token_amount.get_percent_from_amount(fees.protocol_fee_percent)?;
+        input_token_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_token_amount, protocol_fee_amount.clone());
 
@@ -1241,7 +1241,7 @@ pub fn execute_pass_through_swap(
     input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         // Add input amount - protocol fee to input token reserve
         let input_amount_without_protocol_fee_total =
-            input_amount_without_protocol_fee.get_total_amount();
+            input_amount_without_protocol_fee.get_total();
         token.reserve = token
             .reserve
             .checked_add(input_amount_without_protocol_fee_total)
@@ -1341,7 +1341,7 @@ pub fn query_token1155_for_token2_price(
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let token1155_amount_total = token1155_amount.get_total_amount();
+    let token1155_amount_total = token1155_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token2_amount = get_input_price(
@@ -1361,7 +1361,7 @@ pub fn query_token2_for_token1155_price(
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
-    let token2_amount_total = token2_amount.get_total_amount();
+    let token2_amount_total = token2_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
     let token1155_amount = get_input_price(
@@ -1555,7 +1555,7 @@ mod tests {
             &token_supplies,
         );
         assert_eq!(
-            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
             Uint128::new(500)
         )
     }
@@ -1592,7 +1592,7 @@ mod tests {
             &token_supplies,
         );
         assert_eq!(
-            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
             Uint128::new(600)
         )
     }
@@ -1624,7 +1624,7 @@ mod tests {
             &token_supplies,
         );
         assert_eq!(
-            TokenAmount::Multiple(token_amounts_to_transfer).get_total_amount(),
+            TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
             Uint128::new(500)
         )
     }

@@ -31,7 +31,7 @@ impl TokenAmount {
         }
     }
 
-    pub fn get_total_amount(&self) -> Uint128 {
+    pub fn get_total(&self) -> Uint128 {
         match self {
             TokenAmount::Multiple(amounts) => amounts
                 .clone()
@@ -43,32 +43,32 @@ impl TokenAmount {
         }
     }
 
-    pub fn get_percent_from_amount(&self, percent: Decimal) -> StdResult<Option<TokenAmount>> {
+    pub fn get_percent(&self, percent: Decimal) -> StdResult<Option<TokenAmount>> {
         if percent.is_zero() {
             return Ok(None);
         }
 
         let percent = decimal_to_uint128(percent)?;
         match self {
-            TokenAmount::Multiple(amounts) => Ok(Some(Self::get_percent_from_multiple_amount(
+            TokenAmount::Multiple(amounts) => Ok(Some(Self::get_percent_from_multiple(
                 amounts.clone(),
                 percent,
             )?)),
-            TokenAmount::Single(amount) => Ok(Some(Self::get_percent_from_single_amount(
+            TokenAmount::Single(amount) => Ok(Some(Self::get_percent_from_single(
                 amount.clone(),
                 percent,
             )?)),
         }
     }
 
-    fn get_percent_from_multiple_amount(
+    fn get_percent_from_multiple(
         input_amounts: HashMap<String, Uint128>,
         percent: Uint128,
     ) -> StdResult<TokenAmount> {
         let mut amounts: HashMap<TokenId, Uint128> = HashMap::new();
-        let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total_amount();
+        let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total();
         let mut amount_left =
-            Self::get_percent_from_single_amount(input_amounts_total, percent)?.get_single();
+            Self::get_percent_from_single(input_amounts_total, percent)?.get_single();
 
         while !amount_left.is_zero() {
             let amount_per_token = amount_left
@@ -113,7 +113,7 @@ impl TokenAmount {
         Ok(TokenAmount::Multiple(amounts))
     }
 
-    fn get_percent_from_single_amount(
+    fn get_percent_from_single(
         input_amount: Uint128,
         percent: Uint128,
     ) -> StdResult<TokenAmount> {
@@ -137,11 +137,11 @@ mod tests {
     fn should_return_fee_amount_when_single_input_token_provided() {
         let token_amount = TokenAmount::Single(Uint128::new(26000));
         let fee = token_amount
-            .get_percent_from_amount(Decimal::from_str("1").unwrap())
+            .get_percent(Decimal::from_str("1").unwrap())
             .unwrap()
             .unwrap();
 
-        assert_eq!(fee.get_total_amount(), Uint128::new(260))
+        assert_eq!(fee.get_total(), Uint128::new(260))
     }
 
     #[test]
@@ -153,11 +153,11 @@ mod tests {
             ("4".to_string(), Uint128::new(8746)),
         ]));
         let fee = token_amount
-            .get_percent_from_amount(Decimal::from_str("1").unwrap())
+            .get_percent(Decimal::from_str("1").unwrap())
             .unwrap()
             .unwrap();
 
-        assert_eq!(fee.get_total_amount(), Uint128::new(260))
+        assert_eq!(fee.get_total(), Uint128::new(260))
     }
 
     #[test]
@@ -168,10 +168,10 @@ mod tests {
             ("3".to_string(), Uint128::new(1256)),
         ]));
         let fee = token_amount
-            .get_percent_from_amount(Decimal::from_str("1").unwrap())
+            .get_percent(Decimal::from_str("1").unwrap())
             .unwrap()
             .unwrap();
 
-        assert_eq!(fee.get_total_amount(), Uint128::new(260))
+        assert_eq!(fee.get_total(), Uint128::new(260))
     }
 }
