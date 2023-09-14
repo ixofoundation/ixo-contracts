@@ -67,46 +67,46 @@ impl TokenAmount {
     ) -> StdResult<TokenAmount> {
         let mut amounts: HashMap<TokenId, Uint128> = HashMap::new();
         let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total();
-        let mut fee_amount_left =
+        let mut percent_amount_left =
             Self::get_percent_from_single(input_amounts_total, percent)?.get_single();
 
-        while !fee_amount_left.is_zero() {
-            let fee_amount_per_token = fee_amount_left
+        while !percent_amount_left.is_zero() {
+            let percent_amount_per_token = percent_amount_left
                 .checked_div(Uint128::from(input_amounts.len() as u32))
                 .map_err(StdError::divide_by_zero)?;
 
             for (token_id, token_amount) in input_amounts.clone().into_iter() {
-                if fee_amount_left.is_zero() {
+                if percent_amount_left.is_zero() {
                     break;
                 }
 
-                let mut taken_fee_amount_per_token =
+                let mut taken_percent_amount_per_token =
                     *amounts.get(&token_id).unwrap_or(&Uint128::zero());
-                if taken_fee_amount_per_token == token_amount {
+                if taken_percent_amount_per_token == token_amount {
                     continue;
                 }
 
-                let token_amount_left = token_amount - taken_fee_amount_per_token;
-                let fee_amount = if fee_amount_per_token.is_zero() {
-                    fee_amount_left
+                let token_amount_left = token_amount - taken_percent_amount_per_token;
+                let percent_amount = if percent_amount_per_token.is_zero() {
+                    percent_amount_left
                 } else {
-                    fee_amount_per_token
+                    percent_amount_per_token
                 };
 
-                if token_amount_left >= fee_amount {
-                    taken_fee_amount_per_token += fee_amount;
+                if token_amount_left >= percent_amount {
+                    taken_percent_amount_per_token += percent_amount;
 
-                    if fee_amount_per_token.is_zero() {
-                        fee_amount_left = Uint128::zero();
+                    if percent_amount_per_token.is_zero() {
+                        percent_amount_left = Uint128::zero();
                     } else {
-                        fee_amount_left -= fee_amount_per_token;
+                        percent_amount_left -= percent_amount_per_token;
                     }
                 } else {
-                    taken_fee_amount_per_token += token_amount_left;
-                    fee_amount_left -= token_amount_left;
+                    taken_percent_amount_per_token += token_amount_left;
+                    percent_amount_left -= token_amount_left;
                 }
 
-                amounts.insert(token_id, taken_fee_amount_per_token);
+                amounts.insert(token_id, taken_percent_amount_per_token);
             }
         }
 
