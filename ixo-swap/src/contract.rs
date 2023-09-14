@@ -84,8 +84,8 @@ pub fn instantiate(
         admin: None,
         label: "lp_token".to_string(),
         msg: to_binary(&cw20_base::msg::InstantiateMsg {
-            name: "WasmSwap_Liquidity_Token".into(),
-            symbol: "wslpt".into(),
+            name: "IxoSwap_Liquidity_Token".into(),
+            symbol: "islpt".into(),
             decimals: 6,
             initial_balances: vec![],
             mint: Some(MinterResponse {
