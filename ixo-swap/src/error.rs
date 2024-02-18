@@ -73,8 +73,11 @@ pub enum ContractError {
     #[error("Unauthorized pool freeze - sender is not an owner or owner has not been set")]
     UnauthorizedPoolFreeze {},
 
-    #[error("This pools is frozen - you can not deposit or swap tokens")]
+    #[error("This pools are frozen - you can not deposit or swap tokens")]
     FrozenPool {},
+
+    #[error("Pools are already in {freeze_status} status")]
+    DuplicatedFreezeStatus { freeze_status: bool },
 
     #[error("Token with id: {id} has unsupported denom")]
     UnsupportedTokenDenom { id: String },

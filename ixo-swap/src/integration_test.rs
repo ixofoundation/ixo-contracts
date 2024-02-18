@@ -1388,6 +1388,20 @@ fn freeze_pool() {
     let freeze_status = get_freeze_status(&router, &amm_addr);
     assert_eq!(freeze_status.status, true);
 
+    // freeze pool with same freeze status
+    let freeze_msg = ExecuteMsg::FreezeDeposits { freeze: true };
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &freeze_msg, &[])
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(
+        ContractError::DuplicatedFreezeStatus {
+            freeze_status: true
+        },
+        err
+    );
+
     // now adding liquidity will fail
     let add_liquidity_msg = ExecuteMsg::AddLiquidity {
         token1155_amounts: HashMap::from([("TEST/1".to_string(), Uint128::new(50))]),

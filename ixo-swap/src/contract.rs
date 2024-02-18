@@ -237,7 +237,12 @@ fn execute_freeze_deposits(
         return Err(ContractError::UnauthorizedPoolFreeze {});
     }
 
-    FROZEN.save(deps.storage, &freeze)?;
+    FROZEN.update(deps.storage, |freeze_status| -> Result<_, ContractError> {
+        if freeze_status.eq(&freeze) {
+            return Err(ContractError::DuplicatedFreezeStatus { freeze_status });
+        }
+        Ok(freeze)
+    })?;
     Ok(Response::new().add_attribute("action", "freezing-contracts"))
 }
 
