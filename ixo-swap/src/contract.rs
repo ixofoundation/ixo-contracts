@@ -16,7 +16,7 @@ use prost::Message;
 
 use crate::error::ContractError;
 use crate::msg::{
-    Denom, ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, QueryMsg,
+    Denom, ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, QueryMsg,
     QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
     Token2ForToken1155PriceResponse, TokenSelect, TokenSuppliesResponse,
 };
@@ -1290,6 +1290,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::Fee {} => to_binary(&query_fee(deps)?),
         QueryMsg::TokenSupplies { tokens_id } => to_binary(&query_tokens_supply(deps, tokens_id)?),
+        QueryMsg::FreezeStatus {} => to_binary(&query_freeze_status(deps)?),
     }
 }
 
@@ -1327,6 +1328,14 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
         token2_denom: token2.denom,
         lp_token_supply: get_lp_token_supply(deps, &lp_token_address)?,
         lp_token_address: lp_token_address.into_string(),
+    })
+}
+
+pub fn query_freeze_status(deps: Deps) -> StdResult<FreezeStatusResponse> {
+    let freeze_status = FROZEN.load(deps.storage)?;
+
+    Ok(FreezeStatusResponse {
+        status: freeze_status,
     })
 }
 

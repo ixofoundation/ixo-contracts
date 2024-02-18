@@ -15,8 +15,8 @@ use cw_multi_test::{
 use prost::Message;
 
 use crate::msg::{
-    ExecuteMsg, FeeResponse, InfoResponse, InstantiateMsg, QueryMsg, QueryTokenMetadataRequest,
-    QueryTokenMetadataResponse, TokenSelect, TokenSuppliesResponse,
+    ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, QueryMsg,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect, TokenSuppliesResponse,
 };
 use crate::token_amount::TokenAmount;
 use crate::{error::ContractError, msg::Denom};
@@ -83,6 +83,13 @@ fn get_info(router: &App, contract_addr: &Addr) -> InfoResponse {
     router
         .wrap()
         .query_wasm_smart(contract_addr, &QueryMsg::Info {})
+        .unwrap()
+}
+
+fn get_freeze_status(router: &App, contract_addr: &Addr) -> FreezeStatusResponse {
+    router
+        .wrap()
+        .query_wasm_smart(contract_addr, &QueryMsg::FreezeStatus {})
         .unwrap()
 }
 
@@ -1369,11 +1376,17 @@ fn freeze_pool() {
         owner.to_string(),
     );
 
+    let freeze_status = get_freeze_status(&router, &amm_addr);
+    assert_eq!(freeze_status.status, false);
+
     // freeze pool
     let freeze_msg = ExecuteMsg::FreezeDeposits { freeze: true };
     let _res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &freeze_msg, &[])
         .unwrap();
+
+    let freeze_status = get_freeze_status(&router, &amm_addr);
+    assert_eq!(freeze_status.status, true);
 
     // now adding liquidity will fail
     let add_liquidity_msg = ExecuteMsg::AddLiquidity {

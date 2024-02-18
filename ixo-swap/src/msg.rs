@@ -96,6 +96,8 @@ pub enum QueryMsg {
     Fee {},
     #[returns(TokenSuppliesResponse)]
     TokenSupplies { tokens_id: Vec<TokenId> },
+    #[returns(FreezeStatusResponse)]
+    FreezeStatus {},
 }
 
 #[cw_serde]
@@ -129,6 +131,11 @@ pub struct Token2ForToken1155PriceResponse {
 #[cw_serde]
 pub struct TokenSuppliesResponse {
     pub supplies: Vec<Uint128>,
+}
+
+#[cw_serde]
+pub struct FreezeStatusResponse {
+    pub status: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
