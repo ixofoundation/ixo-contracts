@@ -1,88 +1,87 @@
 ---
-id: 6vhna9ak
 title: Ixo-swap contract instantiation
-file_version: 1.1.3
-app_version: 1.14.0
 ---
 
 In this document will be discovered the instantiation of a contract.
 
 ## Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="12">
 
-In order to instantiate the contract, we should send an appropriate message to the contract, in case of instantiation it should be `InstantiateMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:10:4:4:`pub struct InstantiateMsg {`"/>.
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+---
+
+In order to instantiate the contract, we should send an appropriate message to the contract, in case of instantiation it should be <SwmToken path="/ixo-swap/src/msg.rs" pos="12:4:4" line-data="pub struct InstantiateMsg {">`InstantiateMsg`</SwmToken>.
+
 ```renderscript
-10     pub struct InstantiateMsg {
-11         pub token1155_denom: Denom,
-12         pub token2_denom: Denom,
-13         pub lp_token_code_id: u64,
-14         pub owner: Option<String>,
-15         pub protocol_fee_recipient: String,
-16         // NOTE: Fees percents are out of 100 e.g., 1 = 1%
-17         pub protocol_fee_percent: Decimal,
-18         pub lp_fee_percent: Decimal,
-19     }
+pub struct InstantiateMsg {
+    pub token1155_denom: Denom,
+    pub token2_denom: Denom,
+    pub lp_token_code_id: u64,
+    pub protocol_fee_recipient: String,
+    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
+    pub protocol_fee_percent: Decimal,
+    pub lp_fee_percent: Decimal,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ## Denom
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="23">
 
-For instantiation we need to provide two tokens with one of supported `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> for each. The first one is aways `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> token and the second one is either `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> or `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/>.
+---
 
-*   `Native`<swm-token data-swm-token=":ixo-swap/src/msg.rs:23:1:1:`    Native(String),`"/> needs a denom of token
+For instantiation we need to provide two tokens with one of supported <SwmToken path="/ixo-swap/src/msg.rs" pos="23:4:4" line-data="pub enum Denom {">`Denom`</SwmToken> for each. The first one is aways <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken> token and the second one is either <SwmToken path="/ixo-swap/src/msg.rs" pos="25:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> or <SwmToken path="/ixo-swap/src/msg.rs" pos="24:1:1" line-data="    Native(String),">`Native`</SwmToken>.
 
-*   `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> needs an address of existing `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> contract
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="24:1:1" line-data="    Native(String),">`Native`</SwmToken> needs a denom of token
 
-*   `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> needs an address of existing `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> contract and supported denom of token
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="25:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> needs an address of existing <SwmToken path="/ixo-swap/src/msg.rs" pos="25:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> contract
+
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken> needs an address of existing <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken> contract and supported denom of token
+
 ```renderscript
-22     pub enum Denom {
-23         Native(String),
-24         Cw20(Addr),
-25         Cw1155(Addr, String),
-26     }
+pub enum Denom {
+    Native(String),
+    Cw20(Addr),
+    Cw1155(Addr, String),
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ## Fee
 
 While instantiating, we need to specify 3 field for fee.
 
-*   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:18:3:3:`    pub lp_fee_percent: Decimal,`"/>\- a contract fee percent for every swap. Basicly, the higher the percentage, the less a person who swap will receive
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="19:3:3" line-data="    pub lp_fee_percent: Decimal,">`lp_fee_percent`</SwmToken>- a contract fee percent for every swap. Basicly, the higher the percentage, the less a person who swap will receive
 
-*   `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:17:3:3:`    pub protocol_fee_percent: Decimal,`"/> - a fee that sends to `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:15:3:3:`    pub protocol_fee_recipient: String,`"/> for every swap. This value is not taken from `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:18:3:3:`    pub lp_fee_percent: Decimal,`"/> and is calculated separatly
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="18:3:3" line-data="    pub protocol_fee_percent: Decimal,">`protocol_fee_percent`</SwmToken> - a fee that sends to <SwmToken path="/ixo-swap/src/msg.rs" pos="16:3:3" line-data="    pub protocol_fee_recipient: String,">`protocol_fee_recipient`</SwmToken> for every swap. This value is not taken from <SwmToken path="/ixo-swap/src/msg.rs" pos="19:3:3" line-data="    pub lp_fee_percent: Decimal,">`lp_fee_percent`</SwmToken> and is calculated separatly
 
-*   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:15:3:3:`    pub protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:17:3:3:`    pub protocol_fee_percent: Decimal,`"/>for every swap
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="16:3:3" line-data="    pub protocol_fee_recipient: String,">`protocol_fee_recipient`</SwmToken> - a person who receives <SwmToken path="/ixo-swap/src/msg.rs" pos="18:3:3" line-data="    pub protocol_fee_percent: Decimal,">`protocol_fee_percent`</SwmToken>for every swap
 
 ## Example
 
 ```json
 {
-   "token1_denom":{
-      "cw1155":[
-         "ixo1l6j9z82fvpn0mzkztmjz0zu78kj9nuh68vdd6czs8tq00ngltnxqxh9zwq",
-         "CARBON"
-      ]
-   },
-   "token2_denom":{
-      "cw20":"ixo15hzg7eaxgs6ecn46gmu4juc9tau2w45l9cnf8n0797nmmtkdv7jsklrskg"
-   },
-   "lp_token_code_id":25,
-   "owner":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2",
-   "protocol_fee_recipient":"ixo1rngxtm5sapzqdtw3k3e2e9zkjxzgpxd6vw9pye",
-   "protocol_fee_percent":"0.1",
-   "lp_fee_percent":"0.2"
+  "token1_denom": {
+    "cw1155": [
+      "ixo1l6j9z82fvpn0mzkztmjz0zu78kj9nuh68vdd6czs8tq00ngltnxqxh9zwq",
+      "CARBON"
+    ]
+  },
+  "token2_denom": {
+    "cw20": "ixo15hzg7eaxgs6ecn46gmu4juc9tau2w45l9cnf8n0797nmmtkdv7jsklrskg"
+  },
+  "lp_token_code_id": 25,
+  "protocol_fee_recipient": "ixo1rngxtm5sapzqdtw3k3e2e9zkjxzgpxd6vw9pye",
+  "protocol_fee_percent": "0.1",
+  "lp_fee_percent": "0.2"
 }
 ```
 
-<br/>
-
-This file was generated by Swimm. [Click here to view it in the app](https://app.swimm.io/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/6vhna9ak).
+<SwmMeta version="3.0.0" repo-id="Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=" repo-name="ixo-contracts"><sup>Powered by [Swimm](https://app.swimm.io/)</sup></SwmMeta>

@@ -76,6 +76,9 @@ pub enum ContractError {
     #[error("This pools are frozen - you can not deposit or swap tokens")]
     FrozenPool {},
 
+    #[error("Provided new owner is already an owner of the contract")]
+    DuplicatedOwner {},
+
     #[error("Pools are already in {freeze_status} status")]
     DuplicatedFreezeStatus { freeze_status: bool },
 

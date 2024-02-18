@@ -13,7 +13,6 @@ pub struct InstantiateMsg {
     pub token1155_denom: Denom,
     pub token2_denom: Denom,
     pub lp_token_code_id: u64,
-    pub owner: Option<String>,
     pub protocol_fee_recipient: String,
     // NOTE: Fees percents are out of 100 e.g., 1 = 1%
     pub protocol_fee_percent: Decimal,
@@ -69,11 +68,14 @@ pub enum ExecuteMsg {
         expiration: Option<Expiration>,
     },
     UpdateConfig {
-        owner: Option<String>,
         lp_fee_percent: Decimal,
         protocol_fee_percent: Decimal,
         protocol_fee_recipient: String,
     },
+    TransferOwnership {
+        owner: Option<String>,
+    },
+    ClaimOwnership {},
     // Freeze adding new deposits
     FreezeDeposits {
         freeze: bool,
@@ -98,6 +100,8 @@ pub enum QueryMsg {
     TokenSupplies { tokens_id: Vec<TokenId> },
     #[returns(FreezeStatusResponse)]
     FreezeStatus {},
+    #[returns(OwnershipResponse)]
+    Ownership {},
 }
 
 #[cw_serde]
@@ -112,7 +116,6 @@ pub struct InfoResponse {
 
 #[cw_serde]
 pub struct FeeResponse {
-    pub owner: Option<String>,
     pub lp_fee_percent: Decimal,
     pub protocol_fee_percent: Decimal,
     pub protocol_fee_recipient: String,
@@ -136,6 +139,12 @@ pub struct TokenSuppliesResponse {
 #[cw_serde]
 pub struct FreezeStatusResponse {
     pub status: bool,
+}
+
+#[cw_serde]
+pub struct OwnershipResponse {
+    pub owner: String,
+    pub pending_owner: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]

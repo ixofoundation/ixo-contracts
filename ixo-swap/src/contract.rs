@@ -16,12 +16,13 @@ use prost::Message;
 
 use crate::error::ContractError;
 use crate::msg::{
-    Denom, ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
-    Token2ForToken1155PriceResponse, TokenSelect, TokenSuppliesResponse,
+    Denom, ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg,
+    OwnershipResponse, QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse,
+    Token1155ForToken2PriceResponse, Token2ForToken1155PriceResponse, TokenSelect,
+    TokenSuppliesResponse,
 };
 use crate::state::{
-    Fees, Token, FEES, FROZEN, LP_ADDRESS, OWNER, TOKEN1155, TOKEN2, TOKEN_SUPPLIES,
+    Fees, Token, FEES, FROZEN, LP_ADDRESS, OWNER, PENDING_OWNER, TOKEN1155, TOKEN2, TOKEN_SUPPLIES,
 };
 use crate::token_amount::TokenAmount;
 use crate::utils::{decimal_to_uint128, MAX_PERCENT, SCALE_FACTOR};
@@ -38,7 +39,7 @@ const INSTANTIATE_LP_TOKEN_REPLY_ID: u64 = 0;
 pub fn instantiate(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
@@ -55,8 +56,8 @@ pub fn instantiate(
     };
     TOKEN2.save(deps.storage, &token2)?;
 
-    let owner = msg.owner.map(|h| deps.api.addr_validate(&h)).transpose()?;
-    OWNER.save(deps.storage, &owner)?;
+    OWNER.save(deps.storage, &info.sender)?;
+    PENDING_OWNER.save(deps.storage, &None)?;
 
     let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
     let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
@@ -208,18 +209,18 @@ pub fn execute(
             )
         }
         ExecuteMsg::UpdateConfig {
-            owner,
             protocol_fee_recipient,
             lp_fee_percent,
             protocol_fee_percent,
         } => execute_update_config(
             deps,
             info,
-            owner,
             lp_fee_percent,
             protocol_fee_percent,
             protocol_fee_recipient,
         ),
+        ExecuteMsg::TransferOwnership { owner } => execute_transfer_ownership(deps, info, owner),
+        ExecuteMsg::ClaimOwnership {} => execute_claim_ownership(deps, info),
         ExecuteMsg::FreezeDeposits { freeze } => execute_freeze_deposits(deps, info.sender, freeze),
     }
 }
@@ -229,11 +230,7 @@ fn execute_freeze_deposits(
     sender: Addr,
     freeze: bool,
 ) -> Result<Response, ContractError> {
-    if let Some(owner) = OWNER.load(deps.storage)? {
-        if sender != owner {
-            return Err(ContractError::UnauthorizedPoolFreeze {});
-        }
-    } else {
+    if sender != OWNER.load(deps.storage)? {
         return Err(ContractError::UnauthorizedPoolFreeze {});
     }
 
@@ -557,24 +554,65 @@ fn get_cw20_increase_allowance_msg(
     Ok(exec_allowance.into())
 }
 
-pub fn execute_update_config(
+pub fn execute_transfer_ownership(
     deps: DepsMut,
     info: MessageInfo,
     new_owner: Option<String>,
+) -> Result<Response, ContractError> {
+    let owner = OWNER.load(deps.storage)?;
+    if info.sender != owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let mut attributes = vec![attr("action", "transfer-ownership")];
+    let new_owner_addr = new_owner
+        .as_ref()
+        .map(|h| deps.api.addr_validate(h))
+        .transpose()?;
+    if let Some(new_owner_addr) = new_owner_addr.clone() {
+        if owner == new_owner_addr {
+            return Err(ContractError::DuplicatedOwner {});
+        }
+
+        attributes.push(attr("pending_owner", new_owner_addr))
+    }
+
+    PENDING_OWNER.save(deps.storage, &new_owner_addr)?;
+
+    Ok(Response::new().add_attributes(attributes))
+}
+
+pub fn execute_claim_ownership(
+    deps: DepsMut,
+    info: MessageInfo,
+) -> Result<Response, ContractError> {
+    let pending_owner = PENDING_OWNER.load(deps.storage)?;
+
+    let mut attributes = vec![attr("action", "claim-ownership")];
+    if let Some(pending_owner) = pending_owner {
+        if info.sender != pending_owner {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        PENDING_OWNER.save(deps.storage, &None)?;
+        OWNER.save(deps.storage, &pending_owner)?;
+        attributes.push(attr("new_owner", pending_owner));
+    }
+
+    Ok(Response::new().add_attributes(attributes))
+}
+
+pub fn execute_update_config(
+    deps: DepsMut,
+    info: MessageInfo,
     lp_fee_percent: Decimal,
     protocol_fee_percent: Decimal,
     protocol_fee_recipient: String,
 ) -> Result<Response, ContractError> {
     let owner = OWNER.load(deps.storage)?;
-    if Some(info.sender) != owner {
+    if info.sender != owner {
         return Err(ContractError::Unauthorized {});
     }
-
-    let new_owner_addr = new_owner
-        .as_ref()
-        .map(|h| deps.api.addr_validate(h))
-        .transpose()?;
-    OWNER.save(deps.storage, &new_owner_addr)?;
 
     let total_fee_percent = lp_fee_percent + protocol_fee_percent;
     let max_fee_percent = Decimal::from_str(MAX_PERCENT)?;
@@ -593,10 +631,8 @@ pub fn execute_update_config(
     };
     FEES.save(deps.storage, &updated_fees)?;
 
-    let new_owner = new_owner.unwrap_or_default();
     Ok(Response::new().add_attributes(vec![
         attr("action", "update-config"),
-        attr("new_owner", new_owner),
         attr("lp_fee_percent", lp_fee_percent.to_string()),
         attr("protocol_fee_percent", protocol_fee_percent.to_string()),
         attr("protocol_fee_recipient", protocol_fee_recipient.to_string()),
@@ -1305,6 +1341,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::Fee {} => to_binary(&query_fee(deps)?),
         QueryMsg::TokenSupplies { tokens_id } => to_binary(&query_tokens_supply(deps, tokens_id)?),
         QueryMsg::FreezeStatus {} => to_binary(&query_freeze_status(deps)?),
+        QueryMsg::Ownership {} => to_binary(&query_ownership(deps)?),
     }
 }
 
@@ -1342,6 +1379,16 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
         token2_denom: token2.denom,
         lp_token_supply: get_lp_token_supply(deps, &lp_token_address)?,
         lp_token_address: lp_token_address.into_string(),
+    })
+}
+
+pub fn query_ownership(deps: Deps) -> StdResult<OwnershipResponse> {
+    let owner = OWNER.load(deps.storage)?.to_string();
+    let pending_owner = PENDING_OWNER.load(deps.storage)?.map(|o| o.into_string());
+
+    Ok(OwnershipResponse {
+        owner,
+        pending_owner,
     })
 }
 
@@ -1395,10 +1442,8 @@ pub fn query_token2_for_token1155_price(
 
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
     let fees = FEES.load(deps.storage)?;
-    let owner = OWNER.load(deps.storage)?.map(|o| o.into_string());
 
     Ok(FeeResponse {
-        owner,
         lp_fee_percent: fees.lp_fee_percent,
         protocol_fee_percent: fees.protocol_fee_percent,
         protocol_fee_recipient: fees.protocol_fee_recipient.into_string(),

@@ -17,7 +17,8 @@ pub const TOKEN1155: Item<Token> = Item::new("token1155");
 pub const TOKEN2: Item<Token> = Item::new("token2");
 pub const TOKEN_SUPPLIES: Map<TokenId, Uint128> = Map::new("lp_supplies");
 
-pub const OWNER: Item<Option<Addr>> = Item::new("owner");
+pub const OWNER: Item<Addr> = Item::new("owner");
+pub const PENDING_OWNER: Item<Option<Addr>> = Item::new("pending-owner");
 
 #[cw_serde]
 pub struct Fees {

@@ -17,8 +17,9 @@ use cw_utils::parse_instantiate_response_data;
 use prost::Message;
 
 use crate::msg::{
-    ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect, TokenSuppliesResponse,
+    ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, OwnershipResponse,
+    QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect,
+    TokenSuppliesResponse,
 };
 use crate::token_amount::TokenAmount;
 use crate::{error::ContractError, msg::Denom};
@@ -102,6 +103,13 @@ fn get_fee(router: &App, contract_addr: &Addr) -> FeeResponse {
         .unwrap()
 }
 
+fn get_ownership(router: &App, contract_addr: &Addr) -> OwnershipResponse {
+    router
+        .wrap()
+        .query_wasm_smart(contract_addr, &QueryMsg::Ownership {})
+        .unwrap()
+}
+
 fn get_owner_lp_tokens_balance(
     router: &App,
     contract_addr: &Addr,
@@ -134,7 +142,6 @@ fn create_amm(
         token1155_denom,
         token2_denom,
         lp_token_code_id: cw20_id,
-        owner: Some(owner.to_string()),
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient,
@@ -223,7 +230,7 @@ fn batch_balance_for_owner(
 
 #[test]
 // receive cw20 tokens and release upon approval
-fn test_instantiate() {
+fn instantiate() {
     let mut router = mock_app();
 
     const NATIVE_TOKEN_DENOM: &str = "juno";
@@ -254,11 +261,14 @@ fn test_instantiate() {
     let info = get_info(&router, &amm_addr);
     assert_eq!(info.lp_token_address, "contract2".to_string());
 
+    let ownership = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, owner.to_string());
+    assert_eq!(ownership.pending_owner, None);
+
     let fee = get_fee(&router, &amm_addr);
     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
-    assert_eq!(fee.owner.unwrap(), owner.to_string());
 
     // Test instantiation with invalid fee amount
     let lp_fee_percent = Decimal::from_str("1.01").unwrap();
@@ -269,7 +279,6 @@ fn test_instantiate() {
         token1155_denom: Denom::Cw1155(cw1155_token, supported_denom.clone()),
         token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         lp_token_code_id: cw20_id,
-        owner: Some(owner.to_string()),
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -1470,6 +1479,130 @@ fn freeze_pool() {
 }
 
 #[test]
+fn transfer_ownership() {
+    let mut router = mock_app();
+
+    const NATIVE_TOKEN_DENOM: &str = "juno";
+
+    let owner = Addr::unchecked("owner");
+    let new_owner = Addr::unchecked("new-owner");
+    let funds = coins(2000, NATIVE_TOKEN_DENOM);
+    router.borrow_mut().init_modules(|router, _, storage| {
+        router.bank.init_balance(storage, &owner, funds).unwrap()
+    });
+
+    let cw1155_token = create_cw1155(&mut router, &owner);
+
+    let lp_fee_percent = Decimal::from_str("0.3").unwrap();
+    let protocol_fee_percent = Decimal::zero();
+    let amm_addr = create_amm(
+        &mut router,
+        &owner,
+        Denom::Cw1155(cw1155_token, "TEST".to_string()),
+        Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        lp_fee_percent,
+        protocol_fee_percent,
+        owner.to_string(),
+    );
+
+    // Transfer ownership to claim
+    let msg = ExecuteMsg::TransferOwnership {
+        owner: Some(new_owner.to_string()),
+    };
+    let res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "transfer-ownership"),
+        attr("pending_owner", new_owner.to_string()),
+    ]);
+    assert!(res.has_event(&event));
+
+    let ownership = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, owner.to_string());
+    assert_eq!(ownership.pending_owner, Some(new_owner.to_string()));
+
+    // Try transfer ownership with not owner address
+    let msg = ExecuteMsg::TransferOwnership {
+        owner: Some(new_owner.to_string()),
+    };
+    let err = router
+        .execute_contract(new_owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::Unauthorized {}, err);
+
+    // Try transfer ownership to current owner
+    let msg = ExecuteMsg::TransferOwnership {
+        owner: Some(owner.to_string()),
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::DuplicatedOwner {}, err);
+
+    // Try claim ownership with not new owner address
+    let msg = ExecuteMsg::ClaimOwnership {};
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap_err()
+        .downcast()
+        .unwrap();
+    assert_eq!(ContractError::Unauthorized {}, err);
+
+    // Claim ownership
+    let msg = ExecuteMsg::ClaimOwnership {};
+    let res = router
+        .execute_contract(new_owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "claim-ownership"),
+        attr("new_owner", new_owner.to_string()),
+    ]);
+    assert!(res.has_event(&event));
+
+    let ownership = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, new_owner.to_string());
+    assert_eq!(ownership.pending_owner, None);
+
+    // Cancel transferring of ownership
+    let msg = ExecuteMsg::TransferOwnership {
+        owner: Some(owner.to_string()),
+    };
+    let _res = router
+        .execute_contract(new_owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+
+    let ownership: OwnershipResponse = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, new_owner.to_string());
+    assert_eq!(ownership.pending_owner, Some(owner.to_string()));
+
+    let msg = ExecuteMsg::TransferOwnership { owner: None };
+    let _res = router
+        .execute_contract(new_owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+
+    let ownership = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, new_owner.to_string());
+    assert_eq!(ownership.pending_owner, None);
+
+    // Claim empty pending ownership
+    let msg = ExecuteMsg::ClaimOwnership {};
+    let res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![attr("action", "claim-ownership")]);
+    assert!(res.has_event(&event));
+
+    let ownership = get_ownership(&router, &amm_addr);
+    assert_eq!(ownership.owner, new_owner.to_string());
+    assert_eq!(ownership.pending_owner, None);
+}
+
+#[test]
 fn update_config() {
     let mut router = mock_app();
 
@@ -1498,7 +1631,6 @@ fn update_config() {
     let lp_fee_percent = Decimal::from_str("0.15").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.15").unwrap();
     let msg = ExecuteMsg::UpdateConfig {
-        owner: Some(owner.to_string()),
         protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -1508,7 +1640,6 @@ fn update_config() {
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
         attr("action", "update-config"),
-        attr("new_owner", owner.to_string()),
         attr("lp_fee_percent", lp_fee_percent.to_string()),
         attr("protocol_fee_percent", protocol_fee_percent.to_string()),
         attr("protocol_fee_recipient", "new_fee_recipient".to_string()),
@@ -1519,13 +1650,11 @@ fn update_config() {
     assert_eq!(fee.protocol_fee_recipient, "new_fee_recipient".to_string());
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
-    assert_eq!(fee.owner.unwrap(), owner.to_string());
 
     // Try updating config with fee values that are too high
     let lp_fee_percent = Decimal::from_str("1.01").unwrap();
     let protocol_fee_percent = Decimal::zero();
     let msg = ExecuteMsg::UpdateConfig {
-        owner: Some(owner.to_string()),
         protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -1547,7 +1676,6 @@ fn update_config() {
     let lp_fee_percent = Decimal::from_str("0.21").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.09").unwrap();
     let msg = ExecuteMsg::UpdateConfig {
-        owner: Some(owner.to_string()),
         protocol_fee_recipient: owner.to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -1566,7 +1694,6 @@ fn update_config() {
 
     // Try updating owner and fee params
     let msg = ExecuteMsg::UpdateConfig {
-        owner: Some("new_owner".to_string()),
         protocol_fee_recipient: owner.to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -1579,5 +1706,4 @@ fn update_config() {
     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
-    assert_eq!(fee.owner.unwrap(), "new_owner".to_string());
 }
