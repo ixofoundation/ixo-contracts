@@ -1320,7 +1320,6 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_address = LP_ADDRESS.load(deps.storage)?;
 
-    // TODO get total supply
     Ok(InfoResponse {
         token1155_reserve: token1155.reserve,
         token1155_denom: token1155.denom,
