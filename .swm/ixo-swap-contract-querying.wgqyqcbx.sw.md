@@ -1,49 +1,52 @@
 ---
-id: wgqyqcbx
 title: Ixo-swap contract querying
-file_version: 1.1.3
-app_version: 1.14.0
 ---
 
 In this document will be discovered the querying of a contract.
 
 # Messages
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="85">
 
-In order to query the contract, we should send an appropriate message to the contract, in case of querying it should be `QueryMsg`<swm-token data-swm-token=":ixo-swap/src/msg.rs:109:4:4:`pub enum QueryMsg {`"/>:
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+---
+
+In order to query the contract, we should send an appropriate message to the contract, in case of querying it should be <SwmToken path="/ixo-swap/src/msg.rs" pos="85:4:4" line-data="pub enum QueryMsg {">`QueryMsg`</SwmToken>:
+
 ```renderscript
-109    pub enum QueryMsg {
+pub enum QueryMsg {
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ## Balance
 
-In order to get current balance of `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> for specific address we need to send `Balance`<swm-token data-swm-token=":ixo-swap/src/msg.rs:112:1:1:`    Balance { address: String },`"/> message to a contract.
+In order to get current balance of <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> for specific address we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="88:1:1" line-data="    Balance { address: String },">`Balance`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="88">
+
+---
 
 Message consists of 1 mandatory field:
 
-*   `address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:112:5:5:`    Balance { address: String },`"/> - address of wallet
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="88:5:5" line-data="    Balance { address: String },">`address`</SwmToken> - address of wallet
+
 ```renderscript
-112        Balance { address: String },
+    Balance { address: String },
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
 Response consists of 1 field:
 
-*   `balance` - amount of `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> token for provided address
+- `balance` - amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> token for provided address
 
 ```rust
 pub struct BalanceResponse {
@@ -55,272 +58,341 @@ pub struct BalanceResponse {
 
 ```json
 {
-   "balance":{
-      "address":"ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2"
-   }
+  "balance": {
+    "address": "ixo1n8yrmeatsk74dw0zs95ess9sgzptd6thgjgcj2"
+  }
 }
 ```
 
 ## Info
 
-In order to get current state of contract we need to send `Info`<swm-token data-swm-token=":ixo-swap/src/msg.rs:114:1:1:`    Info {},`"/> message to a contract.
+In order to get current state of contract we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="90:1:1" line-data="    Info {},">`Info`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="90">
+
+---
 
 Message does not require any fields.
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+
 ```renderscript
-114        Info {},
+    Info {},
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="104">
+
+---
 
 Response consists of 6 fields:
 
-*   `token1155_reserve`<swm-token data-swm-token=":ixo-swap/src/msg.rs:136:3:3:`    pub token1155_reserve: Uint128,`"/> - total amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> reserve on contract
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="105:3:3" line-data="    pub token1155_reserve: Uint128,">`token1155_reserve`</SwmToken> - total amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken> reserve on contract
 
-*   `token1155_denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:137:3:3:`    pub token1155_denom: Denom,`"/> - `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> of the `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/>
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="106:3:3" line-data="    pub token1155_denom: Denom,">`token1155_denom`</SwmToken> - <SwmToken path="/ixo-swap/src/msg.rs" pos="24:4:4" line-data="pub enum Denom {">`Denom`</SwmToken> of the <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken>
 
-*   `token2_reserve`<swm-token data-swm-token=":ixo-swap/src/msg.rs:138:3:3:`    pub token2_reserve: Uint128,`"/> - amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> reserve on contract
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="107:3:3" line-data="    pub token2_reserve: Uint128,">`token2_reserve`</SwmToken> - amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken> reserve on contract
 
-*   `token2_denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:139:3:3:`    pub token2_denom: Denom,`"/> - `Denom`<swm-token data-swm-token=":ixo-swap/src/msg.rs:22:4:4:`pub enum Denom {`"/> of the `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="108:3:3" line-data="    pub token2_denom: Denom,">`token2_denom`</SwmToken> - <SwmToken path="/ixo-swap/src/msg.rs" pos="24:4:4" line-data="pub enum Denom {">`Denom`</SwmToken> of the <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken>
 
-*   `lp_token_supply`<swm-token data-swm-token=":ixo-swap/src/msg.rs:140:3:3:`    pub lp_token_supply: Uint128,`"/> - total amount of `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> liquidity pool token
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="109:3:3" line-data="    pub lp_token_supply: Uint128,">`lp_token_supply`</SwmToken> - total amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> liquidity pool token
 
-*   `lp_token_address`<swm-token data-swm-token=":ixo-swap/src/msg.rs:141:3:3:`    pub lp_token_address: String,`"/> - address of `Cw20`<swm-token data-swm-token=":ixo-swap/src/msg.rs:24:1:1:`    Cw20(Addr),`"/> liquidity pool contract
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="110:3:3" line-data="    pub lp_token_address: String,">`lp_token_address`</SwmToken> - address of <SwmToken path="/ixo-swap/src/msg.rs" pos="26:1:1" line-data="    Cw20(Addr),">`Cw20`</SwmToken> liquidity pool contract
+
 ```renderscript
-135    pub struct InfoResponse {
-136        pub token1155_reserve: Uint128,
-137        pub token1155_denom: Denom,
-138        pub token2_reserve: Uint128,
-139        pub token2_denom: Denom,
-140        pub lp_token_supply: Uint128,
-141        pub lp_token_address: String,
-142    }
+pub struct InfoResponse {
+    pub token1155_reserve: Uint128,
+    pub token1155_denom: Denom,
+    pub token2_reserve: Uint128,
+    pub token2_denom: Denom,
+    pub lp_token_supply: Uint128,
+    pub lp_token_address: String,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Example
 
 ```json
 {
-    "info":{
-        
-    }
+  "info": {}
 }
 ```
 
 ## Token1155ForToken2Price
 
-In order to get possible `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>amount based on `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> amount we need to send `Token1155ForToken2Price`<swm-token data-swm-token=":ixo-swap/src/msg.rs:116:1:1:`    Token1155ForToken2Price { token1155_amount: TokenAmount },`"/> message to a contract.
+In order to get possible <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken>amount based on <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken> amount we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="92:1:1" line-data="    Token1155ForToken2Price { token1155_amount: TokenAmount },">`Token1155ForToken2Price`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="92">
+
+---
 
 Message consists of 1 mandatory field:
 
-*   `token1155_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:116:5:5:`    Token1155ForToken2Price { token1155_amount: TokenAmount },`"/> - amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/>
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="92:5:5" line-data="    Token1155ForToken2Price { token1155_amount: TokenAmount },">`token1155_amount`</SwmToken> - amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken>
+
 ```renderscript
-116        Token1155ForToken2Price { token1155_amount: TokenAmount },
+    Token1155ForToken2Price { token1155_amount: TokenAmount },
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="122">
+
+---
 
 Response consists of 1 field:
 
-*   `token2_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:154:3:3:`    pub token2_amount: Uint128,`"/> - possible amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> based on `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> amount
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="123:3:3" line-data="    pub token2_amount: Uint128,">`token2_amount`</SwmToken> - possible amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken> based on <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken> amount
+
 ```renderscript
-153    pub struct Token1155ForToken2PriceResponse {
-154        pub token2_amount: Uint128,
-155    }
+pub struct Token1155ForToken2PriceResponse {
+    pub token2_amount: Uint128,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Example
 
 ```json
 {
-   "token1155_for_token2_price":{
-      "token1155_amount":{
-         "token1155":{
-            "CARBON/1":"100",
-            "CARBON/2":"100"
-         }
+  "token1155_for_token2_price": {
+    "token1155_amount": {
+      "token1155": {
+        "CARBON/1": "100",
+        "CARBON/2": "100"
       }
-   }
+    }
+  }
 }
 ```
 
 ## Token2ForToken1155Price
 
-In order to get possible `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> amount based on `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> amount we need to send `Token2ForToken1155Price`<swm-token data-swm-token=":ixo-swap/src/msg.rs:118:1:1:`    Token2ForToken1155Price { token2_amount: TokenAmount },`"/> message to a contract.
+In order to get possible <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken> amount based on <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken> amount we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="94:1:1" line-data="    Token2ForToken1155Price { token2_amount: TokenAmount },">`Token2ForToken1155Price`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="94">
+
+---
 
 Message consists of 1 mandatory field:
 
-*   `token2_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:118:5:5:`    Token2ForToken1155Price { token2_amount: TokenAmount },`"/> - amount of `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/>
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="94:5:5" line-data="    Token2ForToken1155Price { token2_amount: TokenAmount },">`token2_amount`</SwmToken> - amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken>
+
 ```renderscript
-118        Token2ForToken1155Price { token2_amount: TokenAmount },
+    Token2ForToken1155Price { token2_amount: TokenAmount },
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="127">
+
+---
 
 Response consists of 1 field:
 
-*   `token2_amount`<swm-token data-swm-token=":ixo-swap/src/msg.rs:154:3:3:`    pub token2_amount: Uint128,`"/> - possible amount of `Token1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:30:1:1:`    Token1155,`"/> based on `Token2`<swm-token data-swm-token=":ixo-swap/src/msg.rs:31:1:1:`    Token2,`"/> amount
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="123:3:3" line-data="    pub token2_amount: Uint128,">`token2_amount`</SwmToken> - possible amount of <SwmToken path="/ixo-swap/src/msg.rs" pos="32:1:1" line-data="    Token1155,">`Token1155`</SwmToken> based on <SwmToken path="/ixo-swap/src/msg.rs" pos="33:1:1" line-data="    Token2,">`Token2`</SwmToken> amount
+
 ```renderscript
-158    pub struct Token2ForToken1155PriceResponse {
-159        pub token1155_amount: Uint128,
-160    }
+pub struct Token2ForToken1155PriceResponse {
+    pub token1155_amount: Uint128,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Example
 
 ```json
 {
-   "token2_for_token1155_price":{
-      "token2_amount":{
-         "token2":"100"
-      }
-   }
+  "token2_for_token1155_price": {
+    "token2_amount": {
+      "token2": "100"
+    }
+  }
 }
 ```
 
 ## Fee
 
-In order to get fees we need to send `Fee`<swm-token data-swm-token=":ixo-swap/src/msg.rs:120:1:1:`    Fee {},`"/> message to a contract.
+In order to get fees we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="96:1:1" line-data="    Fee {},">`Fee`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="96">
+
+---
 
 Message does not require any fields.
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+
 ```renderscript
-120        Fee {},
+    Fee {},
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="114">
+
+---
 
 Response consists of 4 field:
 
-*   `owner`<swm-token data-swm-token=":ixo-swap/src/msg.rs:146:3:3:`    pub owner: Option&lt;String&gt;,`"/> - administrator of a contract, who can to manipulate contract
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="115:3:3" line-data="    pub owner: Option&lt;String&gt;,">`owner`</SwmToken> - administrator of a contract, who can to manipulate contract
 
-*   `lp_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:147:3:3:`    pub lp_fee_percent: Decimal,`"/> - a contract fee percent for every swap
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="116:3:3" line-data="    pub lp_fee_percent: Decimal,">`lp_fee_percent`</SwmToken> - a contract fee percent for every swap
 
-*   `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:148:3:3:`    pub protocol_fee_percent: Decimal,`"/> - a fee that sends to `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:149:3:3:`    pub protocol_fee_recipient: String,`"/> for every swap
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="117:3:3" line-data="    pub protocol_fee_percent: Decimal,">`protocol_fee_percent`</SwmToken> - a fee that sends to <SwmToken path="/ixo-swap/src/msg.rs" pos="118:3:3" line-data="    pub protocol_fee_recipient: String,">`protocol_fee_recipient`</SwmToken> for every swap
 
-*   `protocol_fee_recipient`<swm-token data-swm-token=":ixo-swap/src/msg.rs:149:3:3:`    pub protocol_fee_recipient: String,`"/> - a person who receives `protocol_fee_percent`<swm-token data-swm-token=":ixo-swap/src/msg.rs:148:3:3:`    pub protocol_fee_percent: Decimal,`"/> for every swap
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="118:3:3" line-data="    pub protocol_fee_recipient: String,">`protocol_fee_recipient`</SwmToken> - a person who receives <SwmToken path="/ixo-swap/src/msg.rs" pos="117:3:3" line-data="    pub protocol_fee_percent: Decimal,">`protocol_fee_percent`</SwmToken> for every swap
+
 ```renderscript
-145    pub struct FeeResponse {
-146        pub owner: Option<String>,
-147        pub lp_fee_percent: Decimal,
-148        pub protocol_fee_percent: Decimal,
-149        pub protocol_fee_recipient: String,
-150    }
+pub struct FeeResponse {
+    pub owner: Option<String>,
+    pub lp_fee_percent: Decimal,
+    pub protocol_fee_percent: Decimal,
+    pub protocol_fee_recipient: String,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Example
 
 ```json
 {
-    "fee":{
-        
-    }
+  "fee": {}
 }
 ```
 
 ## TokenSupplies
 
-In order to get specific supplies of `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/> batches we need to send `TokenSupplies`<swm-token data-swm-token=":ixo-swap/src/msg.rs:122:1:1:`    TokenSupplies { tokens_id: Vec&lt;TokenId&gt; },`"/> message to a contract.
+In order to get specific supplies of <SwmToken path="/ixo-swap/src/msg.rs" pos="27:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken> batches we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="98:1:1" line-data="    TokenSupplies { tokens_id: Vec&lt;TokenId&gt; },">`TokenSupplies`</SwmToken> message to a contract.
 
 ### Message
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="98">
+
+---
 
 Message consists of 1 mandatory field:
 
-*   `tokens_id`<swm-token data-swm-token=":ixo-swap/src/msg.rs:122:5:5:`    TokenSupplies { tokens_id: Vec&lt;TokenId&gt; },`"/> - ids of `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/>batches
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="98:5:5" line-data="    TokenSupplies { tokens_id: Vec&lt;TokenId&gt; },">`tokens_id`</SwmToken> - ids of <SwmToken path="/ixo-swap/src/msg.rs" pos="27:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken>batches
+
 ```renderscript
-122        TokenSupplies { tokens_id: Vec<TokenId> },
+    TokenSupplies { tokens_id: Vec<TokenId> },
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Response
 
-<br/>
+<SwmSnippet path="/ixo-swap/src/msg.rs" line="132">
+
+---
 
 Response consists of 1 field:
 
-*   `supplies`<swm-token data-swm-token=":ixo-swap/src/msg.rs:164:3:3:`    pub supplies: Vec&lt;Uint128&gt;,`"/> - total amounts of requested `Cw1155`<swm-token data-swm-token=":ixo-swap/src/msg.rs:25:1:1:`    Cw1155(Addr, String),`"/>batches
-<!-- NOTE-swimm-snippet: the lines below link your snippet to Swimm -->
-### 📄 ixo-swap/src/msg.rs
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="133:3:3" line-data="    pub supplies: Vec&lt;Uint128&gt;,">`supplies`</SwmToken> - total amounts of requested <SwmToken path="/ixo-swap/src/msg.rs" pos="27:1:1" line-data="    Cw1155(Addr, String),">`Cw1155`</SwmToken>batches
+
 ```renderscript
-163    pub struct TokenSuppliesResponse {
-164        pub supplies: Vec<Uint128>,
-165    }
+pub struct TokenSuppliesResponse {
+    pub supplies: Vec<Uint128>,
+}
 ```
 
-<br/>
+---
+
+</SwmSnippet>
 
 ### Example
 
 ```json
 {
-   "token_supplies":{
-      "tokens_id":[
-         "CARBON/1",
-         "CARBON/2"
-      ]
-   }
+  "token_supplies": {
+    "tokens_id": ["CARBON/1", "CARBON/2"]
+  }
 }
 ```
 
-<br/>
+## FreezeStatus
 
-This file was generated by Swimm. [Click here to view it in the app](https://app.swimm.io/repos/Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=/docs/wgqyqcbx).
+In order to get freeze status of pools we need to send <SwmToken path="/ixo-swap/src/msg.rs" pos="100:1:1" line-data="    FreezeStatus {},">`FreezeStatus`</SwmToken> message to a contract.
+
+### Message
+
+<SwmSnippet path="ixo-swap/src/msg.rs" line="100">
+
+---
+
+Message does not require any fields.
+
+```
+    FreezeStatus {},
+```
+
+---
+
+</SwmSnippet>
+
+### Response
+
+<SwmSnippet path="ixo-swap/src/msg.rs" line="137">
+
+---
+
+Response consists of 1 field:
+
+- <SwmToken path="/ixo-swap/src/msg.rs" pos="138:3:3" line-data="    pub status: bool,">`status`</SwmToken> - current freeze status of pools
+
+```
+pub struct FreezeStatusResponse {
+    pub status: bool,
+}
+```
+
+---
+
+</SwmSnippet>
+
+### Example
+
+```json
+{
+  "freeze_status": {}
+}
+```
+
+<SwmMeta version="3.0.0" repo-id="Z2l0aHViJTNBJTNBaXhvLWNvbnRyYWN0cyUzQSUzQWl4b2ZvdW5kYXRpb24=" repo-name="ixo-contracts"><sup>Powered by [Swimm](https://app.swimm.io/)</sup></SwmMeta>

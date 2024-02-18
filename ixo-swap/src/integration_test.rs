@@ -5,13 +5,15 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use cosmwasm_std::{
-    coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Querier, Storage, Uint128,
+    attr, coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Event, Querier,
+    Storage, Uint128, WasmMsg,
 };
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg, TokenId};
 use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
 use cw_multi_test::{
     App, Contract, ContractWrapper, Executor, StargateKeeper, StargateMsg, StargateQueryHandler,
 };
+use cw_utils::parse_instantiate_response_data;
 use prost::Message;
 
 use crate::msg::{
@@ -137,9 +139,23 @@ fn create_amm(
         protocol_fee_percent,
         protocol_fee_recipient,
     };
-    router
-        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
-        .unwrap()
+    let init_msg = to_binary(&msg).unwrap();
+    let msg = WasmMsg::Instantiate {
+        admin: None,
+        code_id: amm_id,
+        msg: init_msg,
+        funds: [].to_vec(),
+        label: "amm".to_string(),
+    };
+    let res = router.execute(owner.clone(), msg.into()).unwrap();
+    let event = Event::new("wasm").add_attribute(
+        "liquidity_pool_token_address",
+        format!("contract{}", cw20_id),
+    );
+    res.has_event(&event);
+
+    let data = parse_instantiate_response_data(res.data.unwrap_or_default().as_slice()).unwrap();
+    Addr::unchecked(data.contract_address)
 }
 
 // CreateCW20 create new cw20 with given initial balance belonging to owner
@@ -336,7 +352,6 @@ fn cw1155_to_cw1155_swap() {
     let _res = router
         .execute_contract(owner.clone(), cw1155_first.clone(), &mint_msg, &[])
         .unwrap();
-
     let mint_msg = Cw1155ExecuteMsg::BatchMint {
         to: owner.clone().into(),
         batch: vec![
@@ -444,9 +459,15 @@ fn cw1155_to_cw1155_swap() {
         ])),
         expiration: None,
     };
-    let _res = router
+    let res = router
         .execute_contract(owner.clone(), amm1.clone(), &swap_msg, &[])
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "cross-contract-swap"),
+        attr("input_token_amount", Uint128::new(50)),
+        attr("native_transferred", Uint128::new(33)),
+    ]);
+    assert!(res.has_event(&event));
 
     // ensure balances updated
     let owner_balance =
@@ -594,9 +615,16 @@ fn cw1155_to_cw20_swap() {
         min_output: TokenAmount::Single(Uint128::new(33_000)),
         expiration: None,
     };
-    let _res = router
+    let res = router
         .execute_contract(owner.clone(), amm.clone(), &swap_msg, &[])
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "swap"),
+        attr("recipient", owner.clone()),
+        attr("token_sold", Uint128::new(50_000)),
+        attr("token_bought", Uint128::new(33_266)),
+    ]);
+    assert!(res.has_event(&event));
 
     // ensure balances updated
     let owner_balance =
@@ -875,7 +903,7 @@ fn amm_add_and_remove_liquidity() {
         max_token2: Uint128::new(100),
         expiration: None,
     };
-    let _res = router
+    let res = router
         .execute_contract(
             owner.clone(),
             amm_addr.clone(),
@@ -886,6 +914,13 @@ fn amm_add_and_remove_liquidity() {
             }],
         )
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "add-liquidity"),
+        attr("token1155_amount", Uint128::new(100)),
+        attr("token2_amount", Uint128::new(100)),
+        attr("liquidity_received", Uint128::new(100)),
+    ]);
+    assert!(res.has_event(&event));
 
     // ensure balances updated
     let owner_balance =
@@ -1049,12 +1084,18 @@ fn amm_add_and_remove_liquidity() {
         min_token2: Uint128::new(50),
         expiration: None,
     };
-    let _res = router
+    let res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &remove_liquidity_msg, &[])
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "remove-liquidity"),
+        attr("liquidity_burned", Uint128::new(50)),
+        attr("token1155_returned", Uint128::new(50)),
+        attr("token2_returned", Uint128::new(50)),
+    ]);
+    assert!(res.has_event(&event));
 
     // ensure balances updated
-
     let owner_balance =
         batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids).balances;
     assert_eq!(owner_balance, [Uint128::new(4920), Uint128::new(4980)]);
@@ -1381,9 +1422,14 @@ fn freeze_pool() {
 
     // freeze pool
     let freeze_msg = ExecuteMsg::FreezeDeposits { freeze: true };
-    let _res = router
+    let res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &freeze_msg, &[])
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "freeze-contracts"),
+        attr("freeze_status", "true"),
+    ]);
+    assert!(res.has_event(&event));
 
     let freeze_status = get_freeze_status(&router, &amm_addr);
     assert_eq!(freeze_status.status, true);
@@ -1453,16 +1499,24 @@ fn update_config() {
     let protocol_fee_percent = Decimal::from_str("0.15").unwrap();
     let msg = ExecuteMsg::UpdateConfig {
         owner: Some(owner.to_string()),
-        protocol_fee_recipient: "new_fee_recpient".to_string(),
+        protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
     };
-    let _res = router
+    let res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
         .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "update-config"),
+        attr("new_owner", owner.to_string()),
+        attr("lp_fee_percent", lp_fee_percent.to_string()),
+        attr("protocol_fee_percent", protocol_fee_percent.to_string()),
+        attr("protocol_fee_recipient", "new_fee_recipient".to_string()),
+    ]);
+    assert!(res.has_event(&event));
 
     let fee = get_fee(&router, &amm_addr);
-    assert_eq!(fee.protocol_fee_recipient, "new_fee_recpient".to_string());
+    assert_eq!(fee.protocol_fee_recipient, "new_fee_recipient".to_string());
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
     assert_eq!(fee.owner.unwrap(), owner.to_string());
@@ -1472,7 +1526,7 @@ fn update_config() {
     let protocol_fee_percent = Decimal::zero();
     let msg = ExecuteMsg::UpdateConfig {
         owner: Some(owner.to_string()),
-        protocol_fee_recipient: "new_fee_recpient".to_string(),
+        protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
     };

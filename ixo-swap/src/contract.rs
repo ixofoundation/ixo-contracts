@@ -243,7 +243,10 @@ fn execute_freeze_deposits(
         }
         Ok(freeze)
     })?;
-    Ok(Response::new().add_attribute("action", "freezing-contracts"))
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "freeze-contracts"),
+        attr("freeze_status", freeze.to_string()),
+    ]))
 }
 
 fn check_expiration(
@@ -399,6 +402,7 @@ pub fn execute_add_liquidity(
         .add_messages(transfer_msgs)
         .add_message(mint_msg)
         .add_attributes(vec![
+            attr("action", "add-liquidity"),
             attr("token1155_amount", token1155_total_amount),
             attr("token2_amount", token2_amount),
             attr("liquidity_received", liquidity_amount),
@@ -591,6 +595,7 @@ pub fn execute_update_config(
 
     let new_owner = new_owner.unwrap_or_default();
     Ok(Response::new().add_attributes(vec![
+        attr("action", "update-config"),
         attr("new_owner", new_owner),
         attr("lp_fee_percent", lp_fee_percent.to_string()),
         attr("protocol_fee_percent", protocol_fee_percent.to_string()),
@@ -693,6 +698,7 @@ pub fn execute_remove_liquidity(
     msgs.push(get_burn_msg(&lp_token_addr, &info.sender, amount)?);
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
+        attr("action", "remove-liquidity"),
         attr("liquidity_burned", amount),
         attr("token1155_returned", token1155_amount),
         attr("token2_returned", token2_amount),
@@ -1120,6 +1126,8 @@ pub fn execute_swap(
     }
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
+        attr("action", "swap"),
+        attr("recipient", recipient),
         attr("token_sold", input_amount_total),
         attr("token_bought", token_bought),
     ]))
@@ -1277,6 +1285,7 @@ pub fn execute_pass_through_swap(
     }
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
+        attr("action", "cross-contract-swap"),
         attr("input_token_amount", input_token_amount_total),
         attr("native_transferred", amount_to_transfer),
     ]))
@@ -1410,7 +1419,7 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
             // Save gov token
             LP_ADDRESS.save(deps.storage, &cw20_addr)?;
 
-            Ok(Response::new())
+            Ok(Response::new().add_attribute("liquidity_pool_token_address", cw20_addr))
         }
         Err(_) => Err(ContractError::InstantiateLpTokenError {}),
     }
