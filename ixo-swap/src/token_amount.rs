@@ -4,7 +4,10 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Decimal, StdError, StdResult, Uint128, Uint256};
 use cw1155::TokenId;
 
-use crate::utils::{decimal_to_uint128, SCALE_FACTOR};
+use crate::{
+    error::ContractError,
+    utils::{decimal_to_uint128, SCALE_FACTOR},
+};
 
 #[cw_serde]
 pub enum TokenAmount {
@@ -13,21 +16,21 @@ pub enum TokenAmount {
 }
 
 impl TokenAmount {
-    pub fn get_multiple(&self) -> HashMap<TokenId, Uint128> {
+    pub fn get_multiple(&self) -> Result<HashMap<TokenId, Uint128>, ContractError> {
         match self {
-            TokenAmount::Multiple(amounts) => amounts.clone(),
-            TokenAmount::Single(e) => {
-                panic!("{}: {:?}", "Incompatible amount", &e)
-            }
+            TokenAmount::Multiple(amounts) => Ok(amounts.clone()),
+            single_amount => Err(ContractError::InvalidTokenAmount {
+                amount: single_amount.get_total(),
+            }),
         }
     }
 
-    pub fn get_single(&self) -> Uint128 {
+    pub fn get_single(&self) -> Result<Uint128, ContractError> {
         match self {
-            TokenAmount::Single(amount) => amount.clone(),
-            TokenAmount::Multiple(e) => {
-                panic!("{}: {:?}", "Incompatible amount", &e)
-            }
+            TokenAmount::Single(amount) => Ok(amount.clone()),
+            multiple_amount => Err(ContractError::InvalidTokenAmount {
+                amount: multiple_amount.get_total(),
+            }),
         }
     }
 
@@ -43,7 +46,7 @@ impl TokenAmount {
         }
     }
 
-    pub fn get_percent(&self, percent: Decimal) -> StdResult<Option<TokenAmount>> {
+    pub fn get_percent(&self, percent: Decimal) -> Result<Option<TokenAmount>, ContractError> {
         if percent.is_zero() {
             return Ok(None);
         }
@@ -64,11 +67,11 @@ impl TokenAmount {
     fn get_percent_from_multiple(
         input_amounts: HashMap<String, Uint128>,
         percent: Uint128,
-    ) -> StdResult<TokenAmount> {
+    ) -> Result<TokenAmount, ContractError> {
         let mut amounts: HashMap<TokenId, Uint128> = HashMap::new();
         let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total();
         let mut percent_amount_left =
-            Self::get_percent_from_single(input_amounts_total, percent)?.get_single();
+            Self::get_percent_from_single(input_amounts_total, percent)?.get_single()?;
 
         while !percent_amount_left.is_zero() {
             let percent_amount_per_token = percent_amount_left
@@ -170,5 +173,34 @@ mod tests {
             .unwrap();
 
         assert_eq!(fee.get_total(), Uint128::new(260))
+    }
+
+    #[test]
+    fn should_return_error_when_get_multiple_called_for_single_amount() {
+        let token_amount = TokenAmount::Single(Uint128::new(26000));
+        let error = token_amount.get_multiple().err().unwrap();
+
+        assert_eq!(
+            ContractError::InvalidTokenAmount {
+                amount: Uint128::new(26000)
+            },
+            error
+        )
+    }
+
+    #[test]
+    fn should_return_error_when_get_single_called_for_multiple_amount() {
+        let token_amount = TokenAmount::Multiple(HashMap::from([
+            ("1".to_string(), Uint128::new(1234)),
+            ("2".to_string(), Uint128::new(4321)),
+        ]));
+        let error = token_amount.get_single().err().unwrap();
+
+        assert_eq!(
+            ContractError::InvalidTokenAmount {
+                amount: Uint128::new(5555)
+            },
+            error
+        )
     }
 }

@@ -439,7 +439,7 @@ fn get_cw1155_transfer_msg(
     recipient: &Addr,
     token_addr: &Addr,
     tokens: &HashMap<String, Uint128>,
-) -> StdResult<CosmosMsg> {
+) -> Result<CosmosMsg, ContractError> {
     // create transfer cw1155 msg
     let transfer_cw1155_msg = Cw1155ExecuteMsg::BatchSendFrom {
         from: owner.into(),
@@ -509,7 +509,7 @@ fn validate_input_amount(
                 },
                 denom,
             )?;
-            if actual_amount != given_amount.get_single() {
+            if actual_amount != given_amount.get_single()? {
                 return Err(ContractError::InsufficientFunds {});
             }
 
@@ -524,7 +524,7 @@ fn get_cw20_transfer_from_msg(
     recipient: &Addr,
     token_addr: &Addr,
     token_amount: Uint128,
-) -> StdResult<CosmosMsg> {
+) -> Result<CosmosMsg, ContractError> {
     // create transfer cw20 msg
     let transfer_cw20_msg = Cw20ExecuteMsg::TransferFrom {
         owner: owner.into(),
@@ -949,18 +949,18 @@ fn get_fee_transfer_msg(
     recipient: &Addr,
     fee_denom: &Denom,
     amount: TokenAmount,
-) -> StdResult<CosmosMsg> {
+) -> Result<CosmosMsg, ContractError> {
     match fee_denom {
         Denom::Cw1155(addr, _) => {
-            get_cw1155_transfer_msg(sender, recipient, addr, &amount.get_multiple())
+            get_cw1155_transfer_msg(sender, recipient, addr, &amount.get_multiple()?)
         }
         Denom::Cw20(addr) => {
-            get_cw20_transfer_from_msg(sender, recipient, addr, amount.get_single())
+            get_cw20_transfer_from_msg(sender, recipient, addr, amount.get_single()?)
         }
         Denom::Native(denom) => Ok(get_bank_transfer_to_msg(
             recipient,
             denom,
-            amount.get_single(),
+            amount.get_single()?,
         )),
     }
 }
@@ -996,11 +996,11 @@ fn get_input_price(
 fn get_amount_without_fee(
     input_amount: &TokenAmount,
     fee_amount: Option<TokenAmount>,
-) -> TokenAmount {
+) -> Result<TokenAmount, ContractError> {
     if let Some(fee_amount) = fee_amount {
         match input_amount.clone() {
             TokenAmount::Multiple(mut input_amounts) => {
-                let fee_amounts = fee_amount.get_multiple();
+                let fee_amounts = fee_amount.get_multiple()?;
 
                 for (token_id, token_amount) in input_amounts.iter_mut() {
                     let fee_amount = fee_amounts.get(token_id).unwrap();
@@ -1008,16 +1008,16 @@ fn get_amount_without_fee(
                     *token_amount -= fee_amount
                 }
 
-                TokenAmount::Multiple(input_amounts)
+                Ok(TokenAmount::Multiple(input_amounts))
             }
             TokenAmount::Single(input_amount) => {
-                let fee_amount = fee_amount.get_single();
+                let fee_amount = fee_amount.get_single()?;
 
-                TokenAmount::Single(input_amount - fee_amount)
+                Ok(TokenAmount::Single(input_amount - fee_amount))
             }
         }
     } else {
-        input_amount.clone()
+        Ok(input_amount.clone())
     }
 }
 
@@ -1067,7 +1067,7 @@ pub fn execute_swap(
     // Calculate fees
     let protocol_fee_amount = input_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
-        get_amount_without_fee(&input_amount, protocol_fee_amount.clone());
+        get_amount_without_fee(&input_amount, protocol_fee_amount.clone())?;
 
     let mut msgs = vec![];
     match input_token.denom.clone() {
@@ -1075,13 +1075,13 @@ pub fn execute_swap(
             &info.sender,
             &env.contract.address,
             &addr,
-            &input_amount_without_protocol_fee.get_multiple(),
+            &input_amount_without_protocol_fee.get_multiple()?,
         )?),
         Denom::Cw20(addr) => msgs.push(get_cw20_transfer_from_msg(
             &info.sender,
             &env.contract.address,
             &addr,
-            input_amount_without_protocol_fee.get_single(),
+            input_amount_without_protocol_fee.get_single()?,
         )?),
         _ => {}
     };
@@ -1207,7 +1207,7 @@ pub fn execute_pass_through_swap(
     // Calculate fees
     let protocol_fee_amount = input_token_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
-        get_amount_without_fee(&input_token_amount, protocol_fee_amount.clone());
+        get_amount_without_fee(&input_token_amount, protocol_fee_amount.clone())?;
 
     // Transfer input amount - protocol fee to contract
     let mut msgs: Vec<CosmosMsg> = vec![];
@@ -1216,13 +1216,13 @@ pub fn execute_pass_through_swap(
             &info.sender,
             &env.contract.address,
             &addr,
-            &input_amount_without_protocol_fee.get_multiple(),
+            &input_amount_without_protocol_fee.get_multiple()?,
         )?),
         Denom::Cw20(addr) => msgs.push(get_cw20_transfer_from_msg(
             &info.sender,
             &env.contract.address,
             &addr,
-            input_amount_without_protocol_fee.get_single(),
+            input_amount_without_protocol_fee.get_single()?,
         )?),
         _ => {}
     };

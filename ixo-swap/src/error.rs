@@ -67,7 +67,10 @@ pub enum ContractError {
     #[error("Failed to instantiate lp token")]
     InstantiateLpTokenError {},
 
-    #[error("The output amm provided is invalid")]
+    #[error("Provided token amount {amount} do not correspond the type of token")]
+    InvalidTokenAmount { amount: Uint128 },
+
+    #[error("Provided output amm is invalid")]
     InvalidOutputPool {},
 
     #[error("Unauthorized pool freeze - sender is not an owner or owner has not been set")]
