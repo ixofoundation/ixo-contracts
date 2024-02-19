@@ -5,15 +5,15 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use cosmwasm_std::{
-    attr, coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Event, Querier,
-    Storage, Uint128, WasmMsg,
+    attr, coin, coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Event,
+    Querier, Storage, Uint128, WasmMsg,
 };
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg, TokenId};
 use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
 use cw_multi_test::{
     App, Contract, ContractWrapper, Executor, StargateKeeper, StargateMsg, StargateQueryHandler,
 };
-use cw_utils::parse_instantiate_response_data;
+use cw_utils::{parse_instantiate_response_data, PaymentError};
 use prost::Message;
 
 use crate::msg::{
@@ -839,9 +839,13 @@ fn amm_add_and_remove_liquidity() {
     let mut router = mock_app();
 
     const NATIVE_TOKEN_DENOM: &str = "juno";
+    const INVALID_NATIVE_TOKEN_DENOM: &str = "ixo";
 
     let owner = Addr::unchecked("owner");
-    let funds = coins(2000, NATIVE_TOKEN_DENOM);
+    let funds = vec![
+        coin(2000, NATIVE_TOKEN_DENOM),
+        coin(2000, INVALID_NATIVE_TOKEN_DENOM),
+    ];
     router.borrow_mut().init_modules(|router, _, storage| {
         router.bank.init_balance(storage, &owner, funds).unwrap();
         router.stargate.register_query(
@@ -912,6 +916,62 @@ fn amm_add_and_remove_liquidity() {
         max_token2: Uint128::new(100),
         expiration: None,
     };
+
+    // try send insufficient amount of native token than provided liquidity to contract
+    let err = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &add_liquidity_msg,
+            &[Coin {
+                denom: NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(12),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(ContractError::InsufficientFunds {}, err.downcast().unwrap());
+
+    // try send invalid denom of native token than provided to contract
+    let err = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &add_liquidity_msg,
+            &[Coin {
+                denom: INVALID_NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(12),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::PaymentError(PaymentError::MissingDenom(NATIVE_TOKEN_DENOM.into())),
+        err.downcast().unwrap()
+    );
+
+    // try send 2 native tokens to contract
+    let err = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &add_liquidity_msg,
+            &[
+                Coin {
+                    denom: NATIVE_TOKEN_DENOM.into(),
+                    amount: Uint128::new(12),
+                },
+                Coin {
+                    denom: INVALID_NATIVE_TOKEN_DENOM.into(),
+                    amount: Uint128::new(12),
+                },
+            ],
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::PaymentError(PaymentError::MultipleDenoms {}),
+        err.downcast().unwrap()
+    );
+
+    // add liquidity to contract
     let res = router
         .execute_contract(
             owner.clone(),
@@ -1447,14 +1507,12 @@ fn freeze_pool() {
     let freeze_msg = ExecuteMsg::FreezeDeposits { freeze: true };
     let err = router
         .execute_contract(owner.clone(), amm_addr.clone(), &freeze_msg, &[])
-        .unwrap_err()
-        .downcast()
-        .unwrap();
+        .unwrap_err();
     assert_eq!(
         ContractError::DuplicatedFreezeStatus {
             freeze_status: true
         },
-        err
+        err.downcast().unwrap()
     );
 
     // now adding liquidity will fail
@@ -1528,10 +1586,8 @@ fn transfer_ownership() {
     };
     let err = router
         .execute_contract(new_owner.clone(), amm_addr.clone(), &msg, &[])
-        .unwrap_err()
-        .downcast()
-        .unwrap();
-    assert_eq!(ContractError::Unauthorized {}, err);
+        .unwrap_err();
+    assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
 
     // Try transfer ownership to current owner
     let msg = ExecuteMsg::TransferOwnership {
@@ -1539,19 +1595,15 @@ fn transfer_ownership() {
     };
     let err = router
         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-        .unwrap_err()
-        .downcast()
-        .unwrap();
-    assert_eq!(ContractError::DuplicatedOwner {}, err);
+        .unwrap_err();
+    assert_eq!(ContractError::DuplicatedOwner {}, err.downcast().unwrap());
 
     // Try claim ownership with not new owner address
     let msg = ExecuteMsg::ClaimOwnership {};
     let err = router
         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-        .unwrap_err()
-        .downcast()
-        .unwrap();
-    assert_eq!(ContractError::Unauthorized {}, err);
+        .unwrap_err();
+    assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
 
     // Claim ownership
     let msg = ExecuteMsg::ClaimOwnership {};
@@ -1661,15 +1713,13 @@ fn update_config() {
     };
     let err = router
         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
-        .unwrap_err()
-        .downcast()
-        .unwrap();
+        .unwrap_err();
     assert_eq!(
         ContractError::FeesTooHigh {
             max_fee_percent: Decimal::from_str("1").unwrap(),
             total_fee_percent: Decimal::from_str("1.01").unwrap()
         },
-        err
+        err.downcast().unwrap()
     );
 
     // Try updating config with invalid owner, show throw unauthoritzed error
@@ -1687,10 +1737,8 @@ fn update_config() {
             &msg,
             &[],
         )
-        .unwrap_err()
-        .downcast()
-        .unwrap();
-    assert_eq!(ContractError::Unauthorized {}, err);
+        .unwrap_err();
+    assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
 
     // Try updating owner and fee params
     let msg = ExecuteMsg::UpdateConfig {

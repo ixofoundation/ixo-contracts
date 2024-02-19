@@ -10,7 +10,7 @@ use cosmwasm_std::{
 use cw1155::{Cw1155ExecuteMsg, TokenId};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
-use cw_utils::parse_reply_instantiate_data;
+use cw_utils::{must_pay, parse_reply_instantiate_data};
 use prost::Message;
 
 use crate::error::ContractError;
@@ -312,7 +312,12 @@ pub fn execute_add_liquidity(
     let lp_token_addr = LP_ADDRESS.load(deps.storage)?;
 
     validate_token1155_denom(&deps, &token1155.denom, &token1155_amounts)?;
-    validate_input_amount(&info.funds, &TokenAmount::Single(max_token2), &token2.denom)?;
+    validate_input_amount(
+        &info.funds,
+        &TokenAmount::Single(max_token2),
+        &token2.denom,
+        &info.sender,
+    )?;
 
     let token1155_total_amount = TokenAmount::Multiple(token1155_amounts.clone()).get_total();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
@@ -493,19 +498,21 @@ fn validate_input_amount(
     actual_funds: &[Coin],
     given_amount: &TokenAmount,
     given_denom: &Denom,
+    sender: &Addr,
 ) -> Result<(), ContractError> {
     match given_denom {
         Denom::Native(denom) => {
-            let actual = get_amount_for_denom(actual_funds, denom);
-            if actual.amount != given_amount.get_single() {
+            let actual_amount = must_pay(
+                &MessageInfo {
+                    sender: sender.clone(),
+                    funds: actual_funds.to_vec(),
+                },
+                denom,
+            )?;
+            if actual_amount != given_amount.get_single() {
                 return Err(ContractError::InsufficientFunds {});
             }
-            if &actual.denom != denom {
-                return Err(ContractError::IncorrectNativeDenom {
-                    provided: actual.denom,
-                    required: denom.to_string(),
-                });
-            };
+
             Ok(())
         }
         _ => Ok(()),
@@ -1014,18 +1021,6 @@ fn get_amount_without_fee(
     }
 }
 
-fn get_amount_for_denom(coins: &[Coin], denom: &str) -> Coin {
-    let amount: Uint128 = coins
-        .iter()
-        .filter(|c| c.denom == denom)
-        .map(|c| c.amount)
-        .sum();
-    Coin {
-        amount,
-        denom: denom.to_string(),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap(
     deps: DepsMut,
@@ -1050,7 +1045,7 @@ pub fn execute_swap(
     };
     let output_token = output_token_item.load(deps.storage)?;
 
-    validate_input_amount(&info.funds, &input_amount, &input_token.denom)?;
+    validate_input_amount(&info.funds, &input_amount, &input_token.denom, &info.sender)?;
 
     let input_amount_total = input_amount.get_total();
     let fees = FEES.load(deps.storage)?;
@@ -1192,7 +1187,12 @@ pub fn execute_pass_through_swap(
     };
     let transfer_token = transfer_token_state.load(deps.storage)?;
 
-    validate_input_amount(&info.funds, &input_token_amount, &input_token.denom)?;
+    validate_input_amount(
+        &info.funds,
+        &input_token_amount,
+        &input_token.denom,
+        &info.sender,
+    )?;
 
     let input_token_amount_total = input_token_amount.get_total();
     let fees = FEES.load(deps.storage)?;

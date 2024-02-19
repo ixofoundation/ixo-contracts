@@ -9,6 +9,9 @@ pub enum ContractError {
     #[error("{0}")]
     Cw20Error(#[from] cw20_base::ContractError),
 
+    #[error("{0}")]
+    PaymentError(#[from] cw_utils::PaymentError),
+
     #[error("Unauthorized")]
     Unauthorized {},
     // Add any other custom errors you like here.
@@ -42,9 +45,6 @@ pub enum ContractError {
         requested: Uint128,
         available: Uint128,
     },
-
-    #[error("Incorrect native denom: provided: {provided}, required: {required}")]
-    IncorrectNativeDenom { provided: String, required: String },
 
     #[error("Swap min error: min: {min}, available: {available}")]
     SwapMinError { min: Uint128, available: Uint128 },
