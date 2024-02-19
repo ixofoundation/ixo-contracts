@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw1155::TokenId;
-use cw20::{BalanceResponse, Expiration};
+use cw20::Expiration;
 use serde::{Deserialize, Serialize};
 
 use crate::token_amount::TokenAmount;
@@ -85,9 +85,6 @@ pub enum ExecuteMsg {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    /// Implements CW20. Returns the current balance of the given address, 0 if unset.
-    #[returns(BalanceResponse)]
-    Balance { address: String },
     #[returns(InfoResponse)]
     Info {},
     #[returns(Token1155ForToken2PriceResponse)]

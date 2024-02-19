@@ -10,7 +10,6 @@ use cosmwasm_std::{
 use cw1155::{Cw1155ExecuteMsg, TokenId};
 use cw2::set_contract_version;
 use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
-use cw20_base::contract::query_balance;
 use cw_utils::parse_reply_instantiate_data;
 use prost::Message;
 
@@ -1330,7 +1329,6 @@ pub fn execute_pass_through_swap(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Balance { address } => to_binary(&query_balance(deps, address)?),
         QueryMsg::Info {} => to_binary(&query_info(deps)?),
         QueryMsg::Token1155ForToken2Price { token1155_amount } => {
             to_binary(&query_token1155_for_token2_price(deps, token1155_amount)?)
