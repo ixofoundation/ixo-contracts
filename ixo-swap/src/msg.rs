@@ -163,3 +163,45 @@ pub struct QueryTokenMetadataResponse {
     #[prost(string, tag = "5")]
     pub index: ::prost::alloc::string::String,
 }
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
+pub struct QueryDenomMetadataRequest {
+    #[prost(string, tag = "1")]
+    pub denom: ::prost::alloc::string::String,
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
+pub struct DenomUnit {
+    #[prost(string, tag = "1")]
+    pub denom: ::prost::alloc::string::String,
+    #[prost(uint32, tag = "2")]
+    pub exponent: u32,
+    #[prost(string, repeated, tag = "3")]
+    pub aliases: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
+pub struct Metadata {
+    #[prost(string, tag = "1")]
+    pub description: ::prost::alloc::string::String,
+    #[prost(message, repeated, tag = "2")]
+    pub denom_units: ::prost::alloc::vec::Vec<DenomUnit>,
+    #[prost(string, tag = "3")]
+    pub base: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub display: ::prost::alloc::string::String,
+    #[prost(string, tag = "5")]
+    pub name: ::prost::alloc::string::String,
+    #[prost(string, tag = "6")]
+    pub symbol: ::prost::alloc::string::String,
+}
+
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
+pub struct QueryDenomMetadataResponse {
+    #[prost(message, optional, tag = "1")]
+    pub metadata: ::core::option::Option<Metadata>,
+}

@@ -69,6 +69,9 @@ pub enum ContractError {
     #[error("Failed to instantiate lp token")]
     InstantiateLpTokenError {},
 
+    #[error("Provided token type do not correspond the type of contract token")]
+    InvalidTokenType {},
+
     #[error("Provided token amount {amount} do not correspond the type of token")]
     InvalidTokenAmount { amount: Uint128 },
 

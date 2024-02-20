@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use cosmwasm_std::{
-    attr, coin, coins, to_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Event,
-    Querier, Storage, Uint128, WasmMsg,
+    attr, coin, coins, to_json_binary, Addr, Api, Binary, BlockInfo, Coin, Decimal, Empty, Event,
+    Querier, StdError, Storage, Uint128, WasmMsg,
 };
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg, TokenId};
 use cw20_lp::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
@@ -17,9 +17,9 @@ use cw_utils::{parse_instantiate_response_data, PaymentError};
 use prost::Message;
 
 use crate::msg::{
-    ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, OwnershipResponse,
-    QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect,
-    TokenSuppliesResponse,
+    ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, Metadata,
+    OwnershipResponse, QueryDenomMetadataRequest, QueryDenomMetadataResponse, QueryMsg,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect, TokenSuppliesResponse,
 };
 use crate::token_amount::TokenAmount;
 use crate::{error::ContractError, msg::Denom};
@@ -44,7 +44,32 @@ impl StargateQueryHandler for TokenMetadataQueryHandler {
             index: "1".to_string(),
         };
 
-        Ok(to_binary(&metadata)?)
+        Ok(to_json_binary(&metadata)?)
+    }
+
+    fn register_queries(&'static self, _keeper: &mut StargateKeeper<Empty, Empty>) {}
+}
+
+#[derive(Clone)]
+struct DenomMetadataQueryHandler;
+impl StargateQueryHandler for DenomMetadataQueryHandler {
+    fn stargate_query(
+        &self,
+        _api: &dyn Api,
+        _storage: &dyn Storage,
+        _querier: &dyn Querier,
+        _block: &BlockInfo,
+        msg: StargateMsg,
+    ) -> anyhow::Result<Binary> {
+        let request = QueryDenomMetadataRequest::decode(msg.value.as_slice())?;
+        let metadata = match request.denom.as_str() {
+            "Unsupported" => None,
+            _ => Some(Metadata {
+                ..Default::default()
+            }),
+        };
+
+        Ok(to_json_binary(&QueryDenomMetadataResponse { metadata })?)
     }
 
     fn register_queries(&'static self, _keeper: &mut StargateKeeper<Empty, Empty>) {}
@@ -146,7 +171,7 @@ fn create_amm(
         protocol_fee_percent,
         protocol_fee_recipient,
     };
-    let init_msg = to_binary(&msg).unwrap();
+    let init_msg = to_json_binary(&msg).unwrap();
     let msg = WasmMsg::Instantiate {
         admin: None,
         code_id: amm_id,
@@ -238,7 +263,11 @@ fn instantiate() {
     let owner = Addr::unchecked("owner");
     let funds = coins(2000, NATIVE_TOKEN_DENOM);
     router.borrow_mut().init_modules(|router, _, storage| {
-        router.bank.init_balance(storage, &owner, funds).unwrap()
+        router.bank.init_balance(storage, &owner, funds).unwrap();
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
+        )
     });
 
     let cw1155_token = create_cw1155(&mut router, &owner);
@@ -246,6 +275,8 @@ fn instantiate() {
     let supported_denom = "CARBON".to_string();
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
+
+    // instantiate
     let amm_addr = create_amm(
         &mut router,
         &owner,
@@ -270,7 +301,92 @@ fn instantiate() {
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
 
-    // Test instantiation with invalid fee amount
+    // try instantiate with unsupported native denom
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+        token2_denom: Denom::Native("Unsupported".to_string()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(
+        ContractError::UnsupportedTokenDenom {
+            id: "Unsupported".to_string()
+        },
+        err.downcast().unwrap()
+    );
+
+    // try instantiate with duplicated tokens
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+        token2_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(ContractError::InvalidTokenType {}, err.downcast().unwrap());
+
+    // try instantiate with invalid token address
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Cw1155(Addr::unchecked("1"), supported_denom.clone()),
+        token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(ContractError::Std(StdError::GenericErr { msg: "Invalid input: human address too short for this mock implementation (must be >= 3).".to_string() }), err.downcast().unwrap());
+
+    // try instantiate with non 1155 token for token1155_denom
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(ContractError::InvalidTokenType {}, err.downcast().unwrap());
+
+    // try instantiate with 1155 token for token2_denom
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        token2_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(ContractError::InvalidTokenType {}, err.downcast().unwrap());
+
+    // try instantiate with invalid fee amount
     let lp_fee_percent = Decimal::from_str("1.01").unwrap();
     let protocol_fee_percent = Decimal::zero();
     let cw20_id = router.store_code(contract_cw20());
@@ -285,15 +401,13 @@ fn instantiate() {
     };
     let err = router
         .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
-        .unwrap_err()
-        .downcast()
-        .unwrap();
+        .unwrap_err();
     assert_eq!(
         ContractError::FeesTooHigh {
             max_fee_percent: Decimal::from_str("1").unwrap(),
             total_fee_percent: Decimal::from_str("1.01").unwrap()
         },
-        err
+        err.downcast().unwrap()
     );
 }
 
@@ -310,6 +424,10 @@ fn cw1155_to_cw1155_swap() {
         router.stargate.register_query(
             "/ixo.token.v1beta1.Query/TokenMetadata",
             Box::new(TokenMetadataQueryHandler),
+        );
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
         )
     });
 
@@ -551,6 +669,10 @@ fn cw1155_to_cw20_swap() {
         router.stargate.register_query(
             "/ixo.token.v1beta1.Query/TokenMetadata",
             Box::new(TokenMetadataQueryHandler),
+        );
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
         )
     });
 
@@ -755,6 +877,10 @@ fn cw1155_to_native_swap() {
         router.stargate.register_query(
             "/ixo.token.v1beta1.Query/TokenMetadata",
             Box::new(TokenMetadataQueryHandler),
+        );
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
         )
     });
 
@@ -910,6 +1036,10 @@ fn amm_add_and_remove_liquidity() {
         router.stargate.register_query(
             "/ixo.token.v1beta1.Query/TokenMetadata",
             Box::new(TokenMetadataQueryHandler),
+        );
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
         )
     });
 
@@ -1364,6 +1494,10 @@ fn remove_liquidity_with_partially_and_any_filling() {
         router.stargate.register_query(
             "/ixo.token.v1beta1.Query/TokenMetadata",
             Box::new(TokenMetadataQueryHandler),
+        );
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
         )
     });
 
@@ -1611,7 +1745,11 @@ fn freeze_pool() {
     let owner = Addr::unchecked("owner");
     let funds = coins(100, NATIVE_TOKEN_DENOM);
     router.borrow_mut().init_modules(|router, _, storage| {
-        router.bank.init_balance(storage, &owner, funds).unwrap()
+        router.bank.init_balance(storage, &owner, funds).unwrap();
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
+        )
     });
 
     const NATIVE_TOKEN_DENOM: &str = "juno";
@@ -1690,7 +1828,11 @@ fn transfer_ownership() {
     let new_owner = Addr::unchecked("new-owner");
     let funds = coins(2000, NATIVE_TOKEN_DENOM);
     router.borrow_mut().init_modules(|router, _, storage| {
-        router.bank.init_balance(storage, &owner, funds).unwrap()
+        router.bank.init_balance(storage, &owner, funds).unwrap();
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
+        )
     });
 
     let cw1155_token = create_cw1155(&mut router, &owner);
@@ -1807,7 +1949,11 @@ fn update_config() {
     let owner = Addr::unchecked("owner");
     let funds = coins(2000, NATIVE_TOKEN_DENOM);
     router.borrow_mut().init_modules(|router, _, storage| {
-        router.bank.init_balance(storage, &owner, funds).unwrap()
+        router.bank.init_balance(storage, &owner, funds).unwrap();
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
+        )
     });
 
     let cw1155_token = create_cw1155(&mut router, &owner);

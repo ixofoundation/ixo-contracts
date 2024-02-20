@@ -3,9 +3,9 @@ use std::convert::TryInto;
 use std::str::FromStr;
 
 use cosmwasm_std::{
-    attr, entry_point, to_binary, Addr, Binary, BlockInfo, Coin, CosmosMsg, Decimal, Deps, DepsMut,
-    Env, MessageInfo, Order, QueryRequest, Reply, Response, StdError, StdResult, Storage, SubMsg,
-    Uint128, Uint512, WasmMsg,
+    attr, entry_point, to_json_binary, Addr, Binary, BlockInfo, Coin, CosmosMsg, Decimal, Deps,
+    DepsMut, Env, MessageInfo, Order, QueryRequest, Reply, Response, StdError, StdResult, Storage,
+    SubMsg, Uint128, Uint512, WasmMsg,
 };
 use cw1155::{Cw1155ExecuteMsg, TokenId};
 use cw2::set_contract_version;
@@ -16,9 +16,9 @@ use prost::Message;
 use crate::error::ContractError;
 use crate::msg::{
     Denom, ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg,
-    OwnershipResponse, QueryMsg, QueryTokenMetadataRequest, QueryTokenMetadataResponse,
-    Token1155ForToken2PriceResponse, Token2ForToken1155PriceResponse, TokenSelect,
-    TokenSuppliesResponse,
+    OwnershipResponse, QueryDenomMetadataRequest, QueryDenomMetadataResponse, QueryMsg,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
+    Token2ForToken1155PriceResponse, TokenSelect, TokenSuppliesResponse,
 };
 use crate::state::{
     Fees, Token, FEES, FROZEN, LP_ADDRESS, OWNER, PENDING_OWNER, TOKEN1155, TOKEN2, TOKEN_SUPPLIES,
@@ -42,6 +42,8 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+
+    validate_input_tokens(&deps, &msg.token1155_denom, &msg.token2_denom)?;
 
     let token1155 = Token {
         denom: msg.token1155_denom.clone(),
@@ -83,7 +85,7 @@ pub fn instantiate(
         funds: vec![],
         admin: None,
         label: "lp_token".to_string(),
-        msg: to_binary(&cw20_base_lp::msg::InstantiateMsg {
+        msg: to_json_binary(&cw20_base_lp::msg::InstantiateMsg {
             name: "IxoSwap_Liquidity_Token".into(),
             symbol: "islpt".into(),
             decimals: 6,
@@ -100,6 +102,26 @@ pub fn instantiate(
         SubMsg::reply_on_success(instantiate_lp_token_msg, INSTANTIATE_LP_TOKEN_REPLY_ID);
 
     Ok(Response::new().add_submessage(reply_msg))
+}
+
+fn validate_input_tokens(
+    deps: &DepsMut,
+    token1155_denom: &Denom,
+    token2_denom: &Denom,
+) -> Result<(), ContractError> {
+    match (token1155_denom, token2_denom) {
+        (Denom::Cw1155(token1155_addr, _), Denom::Cw20(token2_addr)) => {
+            deps.api.addr_validate(token1155_addr.as_str())?;
+            deps.api.addr_validate(token2_addr.as_str())?;
+        }
+        (Denom::Cw1155(token1155_addr, _), Denom::Native(native_denom)) => {
+            deps.api.addr_validate(token1155_addr.as_str())?;
+            validate_native_token_denom(&deps, native_denom)?;
+        }
+        _ => return Err(ContractError::InvalidTokenType {}),
+    }
+
+    Ok(())
 }
 
 // And declare a custom Error variant for the ones where you will want to make use of it
@@ -411,6 +433,17 @@ pub fn execute_add_liquidity(
         ]))
 }
 
+fn validate_native_token_denom(deps: &DepsMut, denom: &String) -> Result<(), ContractError> {
+    let denom_metadata: QueryDenomMetadataResponse =
+        query_denom_metadata(deps.as_ref(), denom.clone())?;
+
+    if denom_metadata.metadata.is_none() {
+        return Err(ContractError::UnsupportedTokenDenom { id: denom.clone() });
+    }
+
+    Ok(())
+}
+
 fn validate_token1155_denom(
     deps: &DepsMut,
     denom: &Denom,
@@ -461,7 +494,7 @@ fn get_cw1155_transfer_msg(
     };
     let exec_cw1155_transfer = WasmMsg::Execute {
         contract_addr: token_addr.into(),
-        msg: to_binary(&transfer_cw1155_msg)?,
+        msg: to_json_binary(&transfer_cw1155_msg)?,
         funds: vec![],
     };
     let cw1155_transfer_cosmos_msg: CosmosMsg = exec_cw1155_transfer.into();
@@ -487,7 +520,7 @@ fn mint_lp_tokens(
     };
     Ok(WasmMsg::Execute {
         contract_addr: lp_token_address.to_string(),
-        msg: to_binary(&mint_msg)?,
+        msg: to_json_binary(&mint_msg)?,
         funds: vec![],
     }
     .into())
@@ -542,7 +575,7 @@ fn get_cw20_transfer_from_msg(
     };
     let exec_cw20_transfer = WasmMsg::Execute {
         contract_addr: token_addr.into(),
-        msg: to_binary(&transfer_cw20_msg)?,
+        msg: to_json_binary(&transfer_cw20_msg)?,
         funds: vec![],
     };
     let cw20_transfer_cosmos_msg: CosmosMsg = exec_cw20_transfer.into();
@@ -563,7 +596,7 @@ fn get_cw20_increase_allowance_msg(
     };
     let exec_allowance = WasmMsg::Execute {
         contract_addr: token_addr.into(),
-        msg: to_binary(&increase_allowance_msg)?,
+        msg: to_json_binary(&increase_allowance_msg)?,
         funds: vec![],
     };
     Ok(exec_allowance.into())
@@ -908,7 +941,7 @@ fn update_token_supplies(
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
@@ -918,7 +951,7 @@ fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<Cos
     };
     Ok(WasmMsg::Execute {
         contract_addr: contract.to_string(),
-        msg: to_binary(&msg)?,
+        msg: to_json_binary(&msg)?,
         funds: vec![],
     }
     .into())
@@ -936,7 +969,7 @@ fn get_cw20_transfer_to_msg(
     };
     let exec_cw20_transfer = WasmMsg::Execute {
         contract_addr: token_addr.into(),
-        msg: to_binary(&transfer_cw20_msg)?,
+        msg: to_json_binary(&transfer_cw20_msg)?,
         funds: vec![],
     };
     let cw20_transfer_cosmos_msg: CosmosMsg = exec_cw20_transfer.into();
@@ -1297,7 +1330,7 @@ pub fn execute_pass_through_swap(
     msgs.push(
         WasmMsg::Execute {
             contract_addr: output_amm_address.into(),
-            msg: to_binary(&swap_msg)?,
+            msg: to_json_binary(&swap_msg)?,
             funds: match transfer_token.denom {
                 Denom::Native(denom) => vec![Coin {
                     denom,
@@ -1354,17 +1387,19 @@ pub fn execute_pass_through_swap(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Info {} => to_binary(&query_info(deps)?),
+        QueryMsg::Info {} => to_json_binary(&query_info(deps)?),
         QueryMsg::Token1155ForToken2Price { token1155_amount } => {
-            to_binary(&query_token1155_for_token2_price(deps, token1155_amount)?)
+            to_json_binary(&query_token1155_for_token2_price(deps, token1155_amount)?)
         }
         QueryMsg::Token2ForToken1155Price { token2_amount } => {
-            to_binary(&query_token2_for_token1155_price(deps, token2_amount)?)
+            to_json_binary(&query_token2_for_token1155_price(deps, token2_amount)?)
         }
-        QueryMsg::Fee {} => to_binary(&query_fee(deps)?),
-        QueryMsg::TokenSupplies { tokens_id } => to_binary(&query_tokens_supply(deps, tokens_id)?),
-        QueryMsg::FreezeStatus {} => to_binary(&query_freeze_status(deps)?),
-        QueryMsg::Ownership {} => to_binary(&query_ownership(deps)?),
+        QueryMsg::Fee {} => to_json_binary(&query_fee(deps)?),
+        QueryMsg::TokenSupplies { tokens_id } => {
+            to_json_binary(&query_tokens_supply(deps, tokens_id)?)
+        }
+        QueryMsg::FreezeStatus {} => to_json_binary(&query_freeze_status(deps)?),
+        QueryMsg::Ownership {} => to_json_binary(&query_ownership(deps)?),
     }
 }
 
@@ -1372,6 +1407,13 @@ pub fn query_token_metadata(deps: Deps, id: String) -> StdResult<QueryTokenMetad
     deps.querier.query(&QueryRequest::Stargate {
         path: "/ixo.token.v1beta1.Query/TokenMetadata".to_string(),
         data: Binary::from(QueryTokenMetadataRequest { id }.encode_to_vec()),
+    })
+}
+
+pub fn query_denom_metadata(deps: Deps, denom: String) -> StdResult<QueryDenomMetadataResponse> {
+    deps.querier.query(&QueryRequest::Stargate {
+        path: "/cosmos.bank.v1beta1.Query/DenomMetadata".to_string(),
+        data: Binary::from(QueryDenomMetadataRequest { denom }.encode_to_vec()),
     })
 }
 
