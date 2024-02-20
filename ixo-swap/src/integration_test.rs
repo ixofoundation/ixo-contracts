@@ -9,7 +9,7 @@ use cosmwasm_std::{
     Querier, Storage, Uint128, WasmMsg,
 };
 use cw1155::{BatchBalanceResponse, Cw1155ExecuteMsg, Cw1155QueryMsg, TokenId};
-use cw20::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
+use cw20_lp::{Cw20Coin, Cw20Contract, Cw20ExecuteMsg, Expiration};
 use cw_multi_test::{
     App, Contract, ContractWrapper, Executor, StargateKeeper, StargateMsg, StargateQueryHandler,
 };
@@ -66,9 +66,9 @@ pub fn contract_amm() -> Box<dyn Contract<Empty>> {
 
 pub fn contract_cw20() -> Box<dyn Contract<Empty>> {
     let contract = ContractWrapper::new(
-        cw20_base::contract::execute,
-        cw20_base::contract::instantiate,
-        cw20_base::contract::query,
+        cw20_base_lp::contract::execute,
+        cw20_base_lp::contract::instantiate,
+        cw20_base_lp::contract::query,
     );
     Box::new(contract)
 }
@@ -175,7 +175,7 @@ fn create_cw20(
 ) -> Cw20Contract {
     // set up cw20 contract with some tokens
     let cw20_id = router.store_code(contract_cw20());
-    let msg = cw20_base::msg::InstantiateMsg {
+    let msg = cw20_base_lp::msg::InstantiateMsg {
         name,
         symbol,
         decimals: 6,

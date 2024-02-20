@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Decimal, Uint128};
 use cw1155::TokenId;
-use cw20::Expiration;
+use cw20_lp::Expiration;
 use serde::{Deserialize, Serialize};
 
 use crate::token_amount::TokenAmount;

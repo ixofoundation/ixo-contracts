@@ -9,7 +9,7 @@ use cosmwasm_std::{
 };
 use cw1155::{Cw1155ExecuteMsg, TokenId};
 use cw2::set_contract_version;
-use cw20::{Cw20ExecuteMsg, Expiration, MinterResponse};
+use cw20_lp::{Cw20ExecuteMsg, Expiration, MinterResponse};
 use cw_utils::{must_pay, parse_reply_instantiate_data};
 use prost::Message;
 
@@ -83,7 +83,7 @@ pub fn instantiate(
         funds: vec![],
         admin: None,
         label: "lp_token".to_string(),
-        msg: to_binary(&cw20_base::msg::InstantiateMsg {
+        msg: to_binary(&cw20_base_lp::msg::InstantiateMsg {
             name: "IxoSwap_Liquidity_Token".into(),
             symbol: "islpt".into(),
             decimals: 6,
@@ -470,9 +470,9 @@ fn get_cw1155_transfer_msg(
 }
 
 fn get_lp_token_supply(deps: Deps, lp_token_addr: &Addr) -> StdResult<Uint128> {
-    let resp: cw20::TokenInfoResponse = deps
+    let resp: cw20_lp::TokenInfoResponse = deps
         .querier
-        .query_wasm_smart(lp_token_addr, &cw20_base::msg::QueryMsg::TokenInfo {})?;
+        .query_wasm_smart(lp_token_addr, &cw20_base_lp::msg::QueryMsg::TokenInfo {})?;
     Ok(resp.total_supply)
 }
 
@@ -481,7 +481,7 @@ fn mint_lp_tokens(
     liquidity_amount: Uint128,
     lp_token_address: &Addr,
 ) -> StdResult<CosmosMsg> {
-    let mint_msg = cw20_base::msg::ExecuteMsg::Mint {
+    let mint_msg = cw20_base_lp::msg::ExecuteMsg::Mint {
         recipient: recipient.into(),
         amount: liquidity_amount,
     };
@@ -494,9 +494,9 @@ fn mint_lp_tokens(
 }
 
 fn get_token_balance(deps: Deps, contract: &Addr, addr: &Addr) -> StdResult<Uint128> {
-    let resp: cw20::BalanceResponse = deps.querier.query_wasm_smart(
+    let resp: cw20_lp::BalanceResponse = deps.querier.query_wasm_smart(
         contract,
-        &cw20_base::msg::QueryMsg::Balance {
+        &cw20_base_lp::msg::QueryMsg::Balance {
             address: addr.to_string(),
         },
     )?;
@@ -912,7 +912,7 @@ fn update_token_supplies(
 }
 
 fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
-    let msg = cw20_base::msg::ExecuteMsg::BurnFrom {
+    let msg = cw20_base_lp::msg::ExecuteMsg::BurnFrom {
         owner: owner.to_string(),
         amount,
     };
