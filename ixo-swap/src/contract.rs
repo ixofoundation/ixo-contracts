@@ -311,6 +311,7 @@ pub fn execute_add_liquidity(
     let token2 = TOKEN2.load(deps.storage)?;
     let lp_token_addr = LP_ADDRESS.load(deps.storage)?;
 
+    validate_min_token(min_liquidity)?;
     validate_token1155_denom(&deps, &token1155.denom, &token1155_amounts)?;
     validate_input_amount(
         &info.funds,
@@ -429,6 +430,14 @@ fn validate_token1155_denom(
             }
         }
         _ => {}
+    }
+
+    Ok(())
+}
+
+fn validate_min_token(min_token: Uint128) -> Result<(), ContractError> {
+    if min_token.is_zero() {
+        return Err(ContractError::MinTokenError {});
     }
 
     Ok(())
@@ -670,6 +679,9 @@ pub fn execute_remove_liquidity(
     }
 
     let min_token1155_total_amount = min_token1155.get_total();
+    validate_min_token(min_token1155_total_amount)?;
+    validate_min_token(min_token2)?;
+
     let token1155_amount = amount
         .checked_mul(token1155.reserve)
         .map_err(StdError::overflow)?
@@ -1045,6 +1057,7 @@ pub fn execute_swap(
     };
     let output_token = output_token_item.load(deps.storage)?;
 
+    validate_min_token(min_token.get_total())?;
     validate_input_amount(&info.funds, &input_amount, &input_token.denom, &info.sender)?;
 
     let input_amount_total = input_amount.get_total();

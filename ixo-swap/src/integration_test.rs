@@ -614,6 +614,21 @@ fn cw1155_to_cw20_swap() {
     let owner_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
     assert_eq!(owner_balance, Uint128::new(50_000));
 
+    // try swap with 0 min_output
+    let swap_msg = ExecuteMsg::Swap {
+        input_token: TokenSelect::Token1155,
+        input_amount: TokenAmount::Multiple(HashMap::from([
+            (token_ids[0].clone(), Uint128::new(25_000)),
+            (token_ids[1].clone(), Uint128::new(25_000)),
+        ])),
+        min_output: TokenAmount::Single(Uint128::new(0)),
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm.clone(), &swap_msg, &[])
+        .unwrap_err();
+    assert_eq!(ContractError::MinTokenError {}, err.downcast().unwrap());
+
     // Swap cw1155 for cw20
     let swap_msg = ExecuteMsg::Swap {
         input_token: TokenSelect::Token1155,
@@ -907,6 +922,30 @@ fn amm_add_and_remove_liquidity() {
         .execute_contract(owner.clone(), cw1155_token.clone(), &allowance_msg, &[])
         .unwrap();
 
+    // try send add liquidity with 0 min_liqudity
+    let add_liquidity_msg = ExecuteMsg::AddLiquidity {
+        token1155_amounts: HashMap::from([
+            (token_ids[0].clone(), Uint128::new(70)),
+            (token_ids[1].clone(), Uint128::new(30)),
+        ]),
+        min_liquidity: Uint128::zero(),
+        max_token2: Uint128::new(100),
+        expiration: None,
+    };
+
+    let err = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &add_liquidity_msg,
+            &[Coin {
+                denom: NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(12),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(ContractError::MinTokenError {}, err.downcast().unwrap());
+
     let add_liquidity_msg = ExecuteMsg::AddLiquidity {
         token1155_amounts: HashMap::from([
             (token_ids[0].clone(), Uint128::new(70)),
@@ -1112,14 +1151,46 @@ fn amm_add_and_remove_liquidity() {
         err.downcast().unwrap()
     );
 
-    // Remove more liquidity then owned
+    // try remove liquidity with 0 min_token1155
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
-        amount: Uint128::new(151),
+        amount: Uint128::new(20),
         min_token1155: TokenAmount::Multiple(HashMap::from([(
             token_ids[1].clone(),
             Uint128::new(0),
         )])),
+        min_token2: Uint128::new(1),
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &remove_liquidity_msg, &[])
+        .unwrap_err();
+
+    assert_eq!(ContractError::MinTokenError {}, err.downcast().unwrap());
+
+    // try remove liquidity with 0 min_token2
+    let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
+        amount: Uint128::new(20),
+        min_token1155: TokenAmount::Multiple(HashMap::from([(
+            token_ids[1].clone(),
+            Uint128::new(1),
+        )])),
         min_token2: Uint128::new(0),
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &remove_liquidity_msg, &[])
+        .unwrap_err();
+
+    assert_eq!(ContractError::MinTokenError {}, err.downcast().unwrap());
+
+    // try remove more liquidity then owned
+    let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
+        amount: Uint128::new(151),
+        min_token1155: TokenAmount::Multiple(HashMap::from([(
+            token_ids[1].clone(),
+            Uint128::new(1),
+        )])),
+        min_token2: Uint128::new(1),
         expiration: None,
     };
     let err = router

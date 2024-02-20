@@ -14,8 +14,7 @@ pub enum ContractError {
 
     #[error("Unauthorized")]
     Unauthorized {},
-    // Add any other custom errors you like here.
-    // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
+
     #[error("Min liquidity error: requested: {min_liquidity}, available: {liquidity_available}")]
     MinLiquidityError {
         min_liquidity: Uint128,
@@ -27,6 +26,9 @@ pub enum ContractError {
         max_token: Uint128,
         tokens_required: Uint128,
     },
+
+    #[error("Min token error: minimum token amount can not be 0")]
+    MinTokenError {},
 
     #[error("Insufficient liquidity error: requested: {requested}, available: {available}")]
     InsufficientLiquidityError {
