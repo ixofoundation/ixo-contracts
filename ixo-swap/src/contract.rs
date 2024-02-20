@@ -1057,6 +1057,10 @@ pub fn execute_swap(
     };
     let output_token = output_token_item.load(deps.storage)?;
 
+    if input_token_enum == TokenSelect::Token1155 {
+        validate_token1155_denom(&deps, &input_token.denom, &input_amount.get_multiple()?)?;
+    }
+
     validate_min_token(min_token.get_total())?;
     validate_input_amount(&info.funds, &input_amount, &input_token.denom, &info.sender)?;
 
@@ -1199,6 +1203,14 @@ pub fn execute_pass_through_swap(
         TokenSelect::Token2 => TOKEN1155,
     };
     let transfer_token = transfer_token_state.load(deps.storage)?;
+
+    if input_token_enum == TokenSelect::Token1155 {
+        validate_token1155_denom(
+            &deps,
+            &input_token.denom,
+            &input_token_amount.get_multiple()?,
+        )?;
+    }
 
     validate_input_amount(
         &info.funds,

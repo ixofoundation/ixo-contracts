@@ -454,7 +454,31 @@ fn cw1155_to_cw1155_swap() {
         )
         .unwrap();
 
-    // Swap cw1155 tokens for specific cw1155 tokens
+    // try swap with unsupported 1155 token
+    let swap_msg = ExecuteMsg::PassThroughSwap {
+        output_amm_address: amm2.to_string(),
+        input_token: TokenSelect::Token1155,
+        input_token_amount: TokenAmount::Multiple(HashMap::from([
+            ("Unsupported".to_string(), Uint128::new(25)),
+            ("Unsupported".to_string(), Uint128::new(25)),
+        ])),
+        output_min_token: TokenAmount::Multiple(HashMap::from([
+            (token_ids_cw1155_second[0].clone(), Uint128::new(12)),
+            (token_ids_cw1155_second[1].clone(), Uint128::new(12)),
+        ])),
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm1.clone(), &swap_msg, &[])
+        .unwrap_err();
+    assert_eq!(
+        ContractError::UnsupportedTokenDenom {
+            id: "Unsupported".to_string()
+        },
+        err.downcast().unwrap()
+    );
+
+    // swap cw1155 tokens for specific cw1155 tokens
     let swap_msg = ExecuteMsg::PassThroughSwap {
         output_amm_address: amm2.to_string(),
         input_token: TokenSelect::Token1155,
@@ -487,7 +511,7 @@ fn cw1155_to_cw1155_swap() {
         batch_balance_for_owner(&router, &cw1155_second, &owner, &token_ids_cw1155_second).balances;
     assert_eq!(owner_balance, [Uint128::new(4962), Uint128::new(4962)]);
 
-    // Swap cw1155 tokens for any cw1155 tokens
+    // swap cw1155 tokens for any cw1155 tokens
     let swap_msg = ExecuteMsg::PassThroughSwap {
         output_amm_address: amm2.to_string(),
         input_token: TokenSelect::Token1155,
@@ -614,6 +638,26 @@ fn cw1155_to_cw20_swap() {
     let owner_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
     assert_eq!(owner_balance, Uint128::new(50_000));
 
+    // try swap with unsupported 1155 token
+    let swap_msg = ExecuteMsg::Swap {
+        input_token: TokenSelect::Token1155,
+        input_amount: TokenAmount::Multiple(HashMap::from([
+            ("Unsupported".to_string(), Uint128::new(25_000)),
+            ("Unsupported".to_string(), Uint128::new(25_000)),
+        ])),
+        min_output: TokenAmount::Single(Uint128::new(0)),
+        expiration: None,
+    };
+    let err = router
+        .execute_contract(owner.clone(), amm.clone(), &swap_msg, &[])
+        .unwrap_err();
+    assert_eq!(
+        ContractError::UnsupportedTokenDenom {
+            id: "Unsupported".to_string()
+        },
+        err.downcast().unwrap()
+    );
+
     // try swap with 0 min_output
     let swap_msg = ExecuteMsg::Swap {
         input_token: TokenSelect::Token1155,
@@ -629,7 +673,7 @@ fn cw1155_to_cw20_swap() {
         .unwrap_err();
     assert_eq!(ContractError::MinTokenError {}, err.downcast().unwrap());
 
-    // Swap cw1155 for cw20
+    // swap cw1155 for cw20
     let swap_msg = ExecuteMsg::Swap {
         input_token: TokenSelect::Token1155,
         input_amount: TokenAmount::Multiple(HashMap::from([
@@ -921,6 +965,35 @@ fn amm_add_and_remove_liquidity() {
     let _res = router
         .execute_contract(owner.clone(), cw1155_token.clone(), &allowance_msg, &[])
         .unwrap();
+
+    // try send add liquidity with unsupported 1155 tokens
+    let add_liquidity_msg = ExecuteMsg::AddLiquidity {
+        token1155_amounts: HashMap::from([
+            ("Unsupported".to_string(), Uint128::new(70)),
+            ("Unsupported".to_string(), Uint128::new(30)),
+        ]),
+        min_liquidity: Uint128::new(100),
+        max_token2: Uint128::new(100),
+        expiration: None,
+    };
+
+    let err = router
+        .execute_contract(
+            owner.clone(),
+            amm_addr.clone(),
+            &add_liquidity_msg,
+            &[Coin {
+                denom: NATIVE_TOKEN_DENOM.into(),
+                amount: Uint128::new(12),
+            }],
+        )
+        .unwrap_err();
+    assert_eq!(
+        ContractError::UnsupportedTokenDenom {
+            id: "Unsupported".to_string()
+        },
+        err.downcast().unwrap()
+    );
 
     // try send add liquidity with 0 min_liqudity
     let add_liquidity_msg = ExecuteMsg::AddLiquidity {
