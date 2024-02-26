@@ -84,6 +84,9 @@ pub enum ContractError {
     #[error("This pools are frozen - you can not deposit or swap tokens")]
     FrozenPool {},
 
+    #[error("Provided token address: {address} is duplicated")]
+    DuplicatedTokenAddress { address: String },
+
     #[error("Provided new owner is already an owner of the contract")]
     DuplicatedOwner {},
 

@@ -338,6 +338,27 @@ fn instantiate() {
         .unwrap_err();
     assert_eq!(ContractError::InvalidTokenType {}, err.downcast().unwrap());
 
+    // try instantiate with duplicated token addresses
+    let cw20_id = router.store_code(contract_cw20());
+    let amm_id = router.store_code(contract_amm());
+    let msg = InstantiateMsg {
+        token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+        token2_denom: Denom::Cw20(cw1155_token.clone()),
+        lp_token_code_id: cw20_id,
+        lp_fee_percent,
+        protocol_fee_percent,
+        protocol_fee_recipient: owner.to_string(),
+    };
+    let err = router
+        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+        .unwrap_err();
+    assert_eq!(
+        ContractError::DuplicatedTokenAddress {
+            address: cw1155_token.to_string()
+        },
+        err.downcast().unwrap()
+    );
+
     // try instantiate with invalid token address
     let cw20_id = router.store_code(contract_cw20());
     let amm_id = router.store_code(contract_amm());

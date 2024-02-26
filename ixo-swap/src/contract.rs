@@ -113,6 +113,12 @@ fn validate_input_tokens(
         (Denom::Cw1155(token1155_addr, _), Denom::Cw20(token2_addr)) => {
             deps.api.addr_validate(token1155_addr.as_str())?;
             deps.api.addr_validate(token2_addr.as_str())?;
+
+            if token1155_addr == token2_addr {
+                return Err(ContractError::DuplicatedTokenAddress {
+                    address: token1155_addr.to_string(),
+                });
+            }
         }
         (Denom::Cw1155(token1155_addr, _), Denom::Native(native_denom)) => {
             deps.api.addr_validate(token1155_addr.as_str())?;
