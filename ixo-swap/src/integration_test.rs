@@ -19,7 +19,8 @@ use prost::Message;
 use crate::msg::{
     ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg, Metadata,
     OwnershipResponse, QueryDenomMetadataRequest, QueryDenomMetadataResponse, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, TokenSelect, TokenSuppliesResponse,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, SlippageResponse, TokenSelect,
+    TokenSuppliesResponse,
 };
 use crate::token_amount::TokenAmount;
 use crate::{error::ContractError, msg::Denom};
@@ -135,6 +136,13 @@ fn get_ownership(router: &App, contract_addr: &Addr) -> OwnershipResponse {
         .unwrap()
 }
 
+fn get_slippage(router: &App, contract_addr: &Addr) -> SlippageResponse {
+    router
+        .wrap()
+        .query_wasm_smart(contract_addr, &QueryMsg::Slippage {})
+        .unwrap()
+}
+
 fn get_owner_lp_tokens_balance(
     router: &App,
     contract_addr: &Addr,
@@ -156,6 +164,7 @@ fn create_amm(
     owner: &Addr,
     token1155_denom: Denom,
     token2_denom: Denom,
+    max_slippage_percent: Decimal,
     lp_fee_percent: Decimal,
     protocol_fee_percent: Decimal,
     protocol_fee_recipient: String,
@@ -167,6 +176,7 @@ fn create_amm(
         token1155_denom,
         token2_denom,
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient,
@@ -272,6 +282,8 @@ fn instantiate() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let supported_denom = "CARBON".to_string();
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
@@ -282,6 +294,7 @@ fn instantiate() {
         &owner,
         Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -308,6 +321,7 @@ fn instantiate() {
         token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         token2_denom: Denom::Native("Unsupported".to_string()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -329,6 +343,7 @@ fn instantiate() {
         token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         token2_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -345,6 +360,7 @@ fn instantiate() {
         token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         token2_denom: Denom::Cw20(cw1155_token.clone()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -366,6 +382,7 @@ fn instantiate() {
         token1155_denom: Denom::Cw1155(Addr::unchecked("1"), supported_denom.clone()),
         token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -382,6 +399,7 @@ fn instantiate() {
         token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -398,6 +416,7 @@ fn instantiate() {
         token1155_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         token2_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -416,6 +435,7 @@ fn instantiate() {
         token1155_denom: Denom::Cw1155(cw1155_token, supported_denom.clone()),
         token2_denom: Denom::Native(NATIVE_TOKEN_DENOM.into()),
         lp_token_code_id: cw20_id,
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient: owner.to_string(),
@@ -458,6 +478,8 @@ fn cw1155_to_cw1155_swap() {
     let token_ids_cw1155_first = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
     let token_ids_cw1155_second = vec![TokenId::from("SECOND/1"), TokenId::from("SECOND/2")];
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
 
@@ -466,6 +488,7 @@ fn cw1155_to_cw1155_swap() {
         &owner,
         Denom::Cw1155(cw1155_first.clone(), "FIRST".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -475,6 +498,7 @@ fn cw1155_to_cw1155_swap() {
         &owner,
         Denom::Cw1155(cw1155_second.clone(), "SECOND".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -708,6 +732,8 @@ fn cw1155_to_cw20_swap() {
 
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
 
@@ -716,6 +742,7 @@ fn cw1155_to_cw20_swap() {
         &owner,
         Denom::Cw1155(cw1155_token.clone(), "FIRST".to_string()),
         Denom::Cw20(cw20_token.addr()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient.to_string(),
@@ -908,6 +935,8 @@ fn cw1155_to_native_swap() {
     let cw1155_token = create_cw1155(&mut router, &owner);
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
 
@@ -916,6 +945,7 @@ fn cw1155_to_native_swap() {
         &owner,
         Denom::Cw1155(cw1155_token.clone(), "FIRST".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         protocol_fee_recipient.to_string(),
@@ -1066,6 +1096,8 @@ fn amm_add_and_remove_liquidity() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
         format!("{}/1", supported_denom),
@@ -1078,6 +1110,7 @@ fn amm_add_and_remove_liquidity() {
         &owner,
         Denom::Cw1155(cw1155_token.clone(), supported_denom),
         Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -1524,6 +1557,8 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
         format!("{}/1", supported_denom),
@@ -1538,6 +1573,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
         &owner,
         Denom::Cw1155(cw1155_token.clone(), supported_denom),
         Denom::Native(NATIVE_TOKEN_DENOM.into()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -1714,8 +1750,8 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
         amount: Uint128::new(55),
-        min_token1155: TokenAmount::Single(Uint128::new(30)),
-        min_token2: Uint128::new(30),
+        min_token1155: TokenAmount::Single(Uint128::new(40)),
+        min_token2: Uint128::new(40),
         expiration: None,
     };
     let _res = router
@@ -1777,6 +1813,8 @@ fn freeze_pool() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
     let amm_addr = create_amm(
@@ -1784,6 +1822,7 @@ fn freeze_pool() {
         &owner,
         Denom::Cw1155(cw1155_token, "TEST".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -1858,6 +1897,8 @@ fn transfer_ownership() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
     let amm_addr = create_amm(
@@ -1865,6 +1906,7 @@ fn transfer_ownership() {
         &owner,
         Denom::Cw1155(cw1155_token, "TEST".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -1962,7 +2004,7 @@ fn transfer_ownership() {
 }
 
 #[test]
-fn update_config() {
+fn update_slippage() {
     let mut router = mock_app();
 
     const NATIVE_TOKEN_DENOM: &str = "juno";
@@ -1979,6 +2021,8 @@ fn update_config() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
     let amm_addr = create_amm(
@@ -1986,6 +2030,63 @@ fn update_config() {
         &owner,
         Denom::Cw1155(cw1155_token, "TEST".to_string()),
         Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
+        lp_fee_percent,
+        protocol_fee_percent,
+        owner.to_string(),
+    );
+
+    let current_slippage = get_slippage(&router, &amm_addr);
+    assert_eq!(max_slippage_percent, current_slippage.max_slippage_percent);
+
+    let new_max_slippage_percent = Decimal::from_str("15").unwrap();
+    let msg = ExecuteMsg::UpdateSlippage {
+        max_slippage_percent: new_max_slippage_percent,
+    };
+    let res = router
+        .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
+        .unwrap();
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "update-slippage"),
+        attr("max_slippage_percent", new_max_slippage_percent.to_string()),
+    ]);
+    assert!(res.has_event(&event));
+
+    let current_slippage = get_slippage(&router, &amm_addr);
+    assert_eq!(
+        new_max_slippage_percent,
+        current_slippage.max_slippage_percent
+    );
+}
+
+#[test]
+fn update_fee() {
+    let mut router = mock_app();
+
+    const NATIVE_TOKEN_DENOM: &str = "juno";
+
+    let owner = Addr::unchecked("owner");
+    let funds = coins(2000, NATIVE_TOKEN_DENOM);
+    router.borrow_mut().init_modules(|router, _, storage| {
+        router.bank.init_balance(storage, &owner, funds).unwrap();
+        router.stargate.register_query(
+            "/cosmos.bank.v1beta1.Query/DenomMetadata",
+            Box::new(DenomMetadataQueryHandler),
+        )
+    });
+
+    let cw1155_token = create_cw1155(&mut router, &owner);
+
+    let max_slippage_percent = Decimal::from_str("30").unwrap();
+
+    let lp_fee_percent = Decimal::from_str("0.3").unwrap();
+    let protocol_fee_percent = Decimal::zero();
+    let amm_addr = create_amm(
+        &mut router,
+        &owner,
+        Denom::Cw1155(cw1155_token, "TEST".to_string()),
+        Denom::Native(NATIVE_TOKEN_DENOM.to_string()),
+        max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
         owner.to_string(),
@@ -1993,7 +2094,7 @@ fn update_config() {
 
     let lp_fee_percent = Decimal::from_str("0.15").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.15").unwrap();
-    let msg = ExecuteMsg::UpdateConfig {
+    let msg = ExecuteMsg::UpdateFee {
         protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -2014,10 +2115,10 @@ fn update_config() {
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.lp_fee_percent, lp_fee_percent);
 
-    // Try updating config with fee values that are too high
+    // Try updating with fee values that are too high
     let lp_fee_percent = Decimal::from_str("1.01").unwrap();
     let protocol_fee_percent = Decimal::zero();
-    let msg = ExecuteMsg::UpdateConfig {
+    let msg = ExecuteMsg::UpdateFee {
         protocol_fee_recipient: "new_fee_recipient".to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -2033,10 +2134,10 @@ fn update_config() {
         err.downcast().unwrap()
     );
 
-    // Try updating config with invalid owner, show throw unauthoritzed error
+    // Try updating with invalid owner, show throw unauthoritzed error
     let lp_fee_percent = Decimal::from_str("0.21").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.09").unwrap();
-    let msg = ExecuteMsg::UpdateConfig {
+    let msg = ExecuteMsg::UpdateFee {
         protocol_fee_recipient: owner.to_string(),
         lp_fee_percent,
         protocol_fee_percent,
@@ -2052,7 +2153,7 @@ fn update_config() {
     assert_eq!(ContractError::Unauthorized {}, err.downcast().unwrap());
 
     // Try updating owner and fee params
-    let msg = ExecuteMsg::UpdateConfig {
+    let msg = ExecuteMsg::UpdateFee {
         protocol_fee_recipient: owner.to_string(),
         lp_fee_percent,
         protocol_fee_percent,

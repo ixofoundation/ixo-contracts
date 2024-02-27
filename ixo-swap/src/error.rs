@@ -27,6 +27,12 @@ pub enum ContractError {
         tokens_required: Uint128,
     },
 
+    #[error("Min token amount error: requested: {min_token}, min_required {min_required}")]
+    MinTokenAmountError {
+        min_token: Uint128,
+        min_required: Uint128,
+    },
+
     #[error("Min token error: minimum token amount can not be 0")]
     MinTokenError {},
 
@@ -77,6 +83,11 @@ pub enum ContractError {
 
     #[error("Provided output amm is invalid")]
     InvalidOutputPool {},
+
+    #[error(
+        "Provided percent {percent} is invalid, must be greater than 0 and less than or equal 100"
+    )]
+    InvalidPercent { percent: Decimal },
 
     #[error("Unauthorized pool freeze - sender is not an owner or owner has not been set")]
     UnauthorizedPoolFreeze {},

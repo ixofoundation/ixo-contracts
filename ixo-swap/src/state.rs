@@ -20,6 +20,8 @@ pub const TOKEN_SUPPLIES: Map<TokenId, Uint128> = Map::new("lp_supplies");
 pub const OWNER: Item<Addr> = Item::new("owner");
 pub const PENDING_OWNER: Item<Option<Addr>> = Item::new("pending-owner");
 
+pub const MAX_SLIPPAGE_PERCENT: Item<Decimal> = Item::new("max-slippage-percent");
+
 #[cw_serde]
 pub struct Fees {
     pub protocol_fee_recipient: Addr,

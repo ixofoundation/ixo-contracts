@@ -17,14 +17,16 @@ use crate::error::ContractError;
 use crate::msg::{
     Denom, ExecuteMsg, FeeResponse, FreezeStatusResponse, InfoResponse, InstantiateMsg,
     OwnershipResponse, QueryDenomMetadataRequest, QueryDenomMetadataResponse, QueryMsg,
-    QueryTokenMetadataRequest, QueryTokenMetadataResponse, Token1155ForToken2PriceResponse,
-    Token2ForToken1155PriceResponse, TokenSelect, TokenSuppliesResponse,
+    QueryTokenMetadataRequest, QueryTokenMetadataResponse, SlippageResponse,
+    Token1155ForToken2PriceResponse, Token2ForToken1155PriceResponse, TokenSelect,
+    TokenSuppliesResponse,
 };
 use crate::state::{
-    Fees, Token, FEES, FROZEN, LP_ADDRESS, OWNER, PENDING_OWNER, TOKEN1155, TOKEN2, TOKEN_SUPPLIES,
+    Fees, Token, FEES, FROZEN, LP_ADDRESS, MAX_SLIPPAGE_PERCENT, OWNER, PENDING_OWNER, TOKEN1155,
+    TOKEN2, TOKEN_SUPPLIES,
 };
 use crate::token_amount::TokenAmount;
-use crate::utils::{decimal_to_uint128, MAX_PERCENT, SCALE_FACTOR};
+use crate::utils::{decimal_to_uint128, MAX_FEE_PERCENT, MAX_PERCENT, SCALE_FACTOR};
 
 // Version info for migration info
 pub const CONTRACT_NAME: &str = "crates.io:ixoswap";
@@ -62,7 +64,7 @@ pub fn instantiate(
 
     let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
     let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -76,6 +78,9 @@ pub fn instantiate(
         protocol_fee_recipient,
     };
     FEES.save(deps.storage, &fees)?;
+
+    validate_percent(msg.max_slippage_percent)?;
+    MAX_SLIPPAGE_PERCENT.save(deps.storage, &msg.max_slippage_percent)?;
 
     // Depositing is not frozen by default
     FROZEN.save(deps.storage, &false)?;
@@ -102,6 +107,14 @@ pub fn instantiate(
         SubMsg::reply_on_success(instantiate_lp_token_msg, INSTANTIATE_LP_TOKEN_REPLY_ID);
 
     Ok(Response::new().add_submessage(reply_msg))
+}
+
+fn validate_percent(percent: Decimal) -> Result<(), ContractError> {
+    if percent.is_zero() || percent > Decimal::from_str(MAX_PERCENT)? {
+        return Err(ContractError::InvalidPercent { percent });
+    }
+
+    Ok(())
 }
 
 fn validate_input_tokens(
@@ -235,17 +248,20 @@ pub fn execute(
                 expiration,
             )
         }
-        ExecuteMsg::UpdateConfig {
+        ExecuteMsg::UpdateFee {
             protocol_fee_recipient,
             lp_fee_percent,
             protocol_fee_percent,
-        } => execute_update_config(
+        } => execute_update_fee(
             deps,
             info,
             lp_fee_percent,
             protocol_fee_percent,
             protocol_fee_recipient,
         ),
+        ExecuteMsg::UpdateSlippage {
+            max_slippage_percent,
+        } => execute_update_slippage(deps, info, max_slippage_percent),
         ExecuteMsg::TransferOwnership { owner } => execute_transfer_ownership(deps, info, owner),
         ExecuteMsg::ClaimOwnership {} => execute_claim_ownership(deps, info),
         ExecuteMsg::FreezeDeposits { freeze } => execute_freeze_deposits(deps, info.sender, freeze),
@@ -352,6 +368,8 @@ pub fn execute_add_liquidity(
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
         get_lp_token_amount_to_mint(token1155_total_amount, lp_token_supply, token1155.reserve)?;
+
+    validate_slippage(&deps, min_liquidity, liquidity_amount)?;
 
     let token2_amount = get_token2_amount_required(
         max_token2,
@@ -477,6 +495,28 @@ fn validate_token1155_denom(
 fn validate_min_token(min_token: Uint128) -> Result<(), ContractError> {
     if min_token.is_zero() {
         return Err(ContractError::MinTokenError {});
+    }
+
+    Ok(())
+}
+
+fn validate_slippage(
+    deps: &DepsMut,
+    min_token_amount: Uint128,
+    actual_token_amount: Uint128,
+) -> Result<(), ContractError> {
+    let max_slippage_percent = MAX_SLIPPAGE_PERCENT.load(deps.storage)?;
+
+    let actual_token_decimal_amount = Decimal::from_str(actual_token_amount.to_string().as_str())?;
+    let min_required_decimal_amount = actual_token_decimal_amount
+        - (actual_token_decimal_amount * max_slippage_percent) / Decimal::from_str(MAX_PERCENT)?;
+    let min_required_amount = min_required_decimal_amount.to_uint_floor();
+
+    if min_token_amount < min_required_amount {
+        return Err(ContractError::MinTokenAmountError {
+            min_token: min_token_amount,
+            min_required: min_required_amount,
+        });
     }
 
     Ok(())
@@ -656,7 +696,26 @@ pub fn execute_claim_ownership(
     Ok(Response::new().add_attributes(attributes))
 }
 
-pub fn execute_update_config(
+pub fn execute_update_slippage(
+    deps: DepsMut,
+    info: MessageInfo,
+    max_slippage_percent: Decimal,
+) -> Result<Response, ContractError> {
+    let owner = OWNER.load(deps.storage)?;
+    if info.sender != owner {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    validate_percent(max_slippage_percent)?;
+    MAX_SLIPPAGE_PERCENT.save(deps.storage, &max_slippage_percent)?;
+
+    Ok(Response::new().add_attributes(vec![
+        attr("action", "update-slippage"),
+        attr("max_slippage_percent", max_slippage_percent.to_string()),
+    ]))
+}
+
+pub fn execute_update_fee(
     deps: DepsMut,
     info: MessageInfo,
     lp_fee_percent: Decimal,
@@ -669,7 +728,7 @@ pub fn execute_update_config(
     }
 
     let total_fee_percent = lp_fee_percent + protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -726,18 +785,21 @@ pub fn execute_remove_liquidity(
         .map_err(StdError::overflow)?
         .checked_div(lp_token_supply)
         .map_err(StdError::divide_by_zero)?;
+    let token2_amount = amount
+        .checked_mul(token2.reserve)
+        .map_err(StdError::overflow)?
+        .checked_div(lp_token_supply)
+        .map_err(StdError::divide_by_zero)?;
+
+    validate_slippage(&deps, min_token1155_total_amount, token1155_amount)?;
+    validate_slippage(&deps, min_token2, token2_amount)?;
+
     if token1155_amount < min_token1155_total_amount {
         return Err(ContractError::MinToken1155Error {
             requested: min_token1155_total_amount,
             available: token1155_amount,
         });
     }
-
-    let token2_amount = amount
-        .checked_mul(token2.reserve)
-        .map_err(StdError::overflow)?
-        .checked_div(lp_token_supply)
-        .map_err(StdError::divide_by_zero)?;
     if token2_amount < min_token2 {
         return Err(ContractError::MinToken2Error {
             requested: min_token2,
@@ -1100,7 +1162,8 @@ pub fn execute_swap(
         validate_token1155_denom(&deps, &input_token.denom, &input_amount.get_multiple()?)?;
     }
 
-    validate_min_token(min_token.get_total())?;
+    let min_token_total = min_token.get_total();
+    validate_min_token(min_token_total)?;
     validate_input_amount(&info.funds, &input_amount, &input_token.denom, &info.sender)?;
 
     let input_amount_total = input_amount.get_total();
@@ -1113,7 +1176,8 @@ pub fn execute_swap(
         total_fee_percent,
     )?;
 
-    let min_token_total = min_token.get_total();
+    validate_slippage(&deps, min_token_total, token_bought)?;
+
     if min_token_total > token_bought {
         return Err(ContractError::SwapMinError {
             min: min_token_total,
@@ -1406,6 +1470,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         }
         QueryMsg::FreezeStatus {} => to_json_binary(&query_freeze_status(deps)?),
         QueryMsg::Ownership {} => to_json_binary(&query_ownership(deps)?),
+        QueryMsg::Slippage {} => to_json_binary(&query_slippage(deps)?),
     }
 }
 
@@ -1436,6 +1501,14 @@ pub fn query_tokens_supply(
     }
 
     Ok(TokenSuppliesResponse { supplies })
+}
+
+pub fn query_slippage(deps: Deps) -> StdResult<SlippageResponse> {
+    let max_slippage_percent = MAX_SLIPPAGE_PERCENT.load(deps.storage)?;
+
+    Ok(SlippageResponse {
+        max_slippage_percent,
+    })
 }
 
 pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
@@ -1762,6 +1835,63 @@ mod tests {
             TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
             Uint128::new(500)
         )
+    }
+
+    #[test]
+    fn should_fail_slippage_validation_when_min_token_amount_less_than_minimum_required() {
+        let mut deps = mock_dependencies();
+
+        MAX_SLIPPAGE_PERCENT
+            .save(&mut deps.storage, &Decimal::from_str("10").unwrap())
+            .unwrap();
+
+        let min_token_amount = Uint128::new(95_000);
+        let actual_token_amount = Uint128::new(110_000);
+        let err =
+            validate_slippage(&deps.as_mut(), min_token_amount, actual_token_amount).unwrap_err();
+
+        assert_eq!(
+            err,
+            ContractError::MinTokenAmountError {
+                min_token: min_token_amount,
+                min_required: Uint128::new(99_000)
+            }
+        );
+    }
+
+    #[test]
+    fn should_pass_slippage_validation_when_minimum_amount_greater_then_minimum_required() {
+        let mut deps = mock_dependencies();
+
+        MAX_SLIPPAGE_PERCENT
+            .save(&mut deps.storage, &Decimal::from_str("10").unwrap())
+            .unwrap();
+
+        let min_token_amount = Uint128::new(105_000);
+        let actual_token_amount = Uint128::new(110_000);
+        let res = validate_slippage(&deps.as_mut(), min_token_amount, actual_token_amount).unwrap();
+
+        assert_eq!(res, ());
+    }
+
+    #[test]
+    fn should_fail_percent_validation_when_percent_greater_than_100() {
+        let percent = Decimal::from_str("110").unwrap();
+        let err = validate_percent(percent).unwrap_err();
+        assert_eq!(err, ContractError::InvalidPercent { percent });
+    }
+
+    #[test]
+    fn should_fail_percent_validation_when_percent_in_0() {
+        let percent = Decimal::from_str("0").unwrap();
+        let err = validate_percent(percent).unwrap_err();
+        assert_eq!(err, ContractError::InvalidPercent { percent });
+    }
+
+    #[test]
+    fn should_pass_percent_validation_when_percent_in_allowed_range() {
+        let res = validate_percent(Decimal::from_str("50").unwrap()).unwrap();
+        assert_eq!(res, ());
     }
 
     fn assert_token_supplies(

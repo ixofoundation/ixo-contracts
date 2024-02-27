@@ -8,13 +8,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::token_amount::TokenAmount;
 
+// NOTE: Percents are out of 100 e.g., 1 = 1%
 #[cw_serde]
 pub struct InstantiateMsg {
     pub token1155_denom: Denom,
     pub token2_denom: Denom,
     pub lp_token_code_id: u64,
+    pub max_slippage_percent: Decimal,
     pub protocol_fee_recipient: String,
-    // NOTE: Fees percents are out of 100 e.g., 1 = 1%
     pub protocol_fee_percent: Decimal,
     pub lp_fee_percent: Decimal,
 }
@@ -67,10 +68,13 @@ pub enum ExecuteMsg {
         min_token: TokenAmount,
         expiration: Option<Expiration>,
     },
-    UpdateConfig {
+    UpdateFee {
         lp_fee_percent: Decimal,
         protocol_fee_percent: Decimal,
         protocol_fee_recipient: String,
+    },
+    UpdateSlippage {
+        max_slippage_percent: Decimal,
     },
     TransferOwnership {
         owner: Option<String>,
@@ -99,6 +103,8 @@ pub enum QueryMsg {
     FreezeStatus {},
     #[returns(OwnershipResponse)]
     Ownership {},
+    #[returns(SlippageResponse)]
+    Slippage {},
 }
 
 #[cw_serde]
@@ -142,6 +148,11 @@ pub struct FreezeStatusResponse {
 pub struct OwnershipResponse {
     pub owner: String,
     pub pending_owner: Option<String>,
+}
+
+#[cw_serde]
+pub struct SlippageResponse {
+    pub max_slippage_percent: Decimal,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, ::prost::Message)]
