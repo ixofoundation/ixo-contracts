@@ -85,9 +85,9 @@ pub enum ContractError {
     InvalidOutputPool {},
 
     #[error(
-        "Provided percent {percent} is invalid, must be greater than 0 and less than or equal 100"
+        "Provided percent {percent} is invalid, must be greater than 0 and less than or equal {max}"
     )]
-    InvalidPercent { percent: Decimal },
+    InvalidPercent { percent: Decimal, max: Decimal },
 
     #[error("Unauthorized pool freeze - sender is not an owner or owner has not been set")]
     UnauthorizedPoolFreeze {},
