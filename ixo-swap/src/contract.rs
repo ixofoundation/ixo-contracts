@@ -26,7 +26,9 @@ use crate::state::{
     TOKEN2, TOKEN_SUPPLIES,
 };
 use crate::token_amount::TokenAmount;
-use crate::utils::{decimal_to_uint128, MAX_FEE_PERCENT, MAX_PERCENT, SCALE_FACTOR};
+use crate::utils::{
+    decimal_to_uint128, PREDEFINED_MAX_PERCENT, PREDEFINED_MAX_SLIPPAGE_PERCENT, SCALE_FACTOR,
+};
 
 // Version info for migration info
 pub const CONTRACT_NAME: &str = "crates.io:ixoswap";
@@ -64,7 +66,7 @@ pub fn instantiate(
 
     let protocol_fee_recipient = deps.api.addr_validate(&msg.protocol_fee_recipient)?;
     let total_fee_percent = msg.lp_fee_percent + msg.protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(PREDEFINED_MAX_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -79,7 +81,7 @@ pub fn instantiate(
     };
     FEES.save(deps.storage, &fees)?;
 
-    validate_percent(msg.max_slippage_percent)?;
+    validate_slippage_percent(msg.max_slippage_percent)?;
     MAX_SLIPPAGE_PERCENT.save(deps.storage, &msg.max_slippage_percent)?;
 
     // Depositing is not frozen by default
@@ -109,9 +111,13 @@ pub fn instantiate(
     Ok(Response::new().add_submessage(reply_msg))
 }
 
-fn validate_percent(percent: Decimal) -> Result<(), ContractError> {
-    if percent.is_zero() || percent > Decimal::from_str(MAX_PERCENT)? {
-        return Err(ContractError::InvalidPercent { percent });
+fn validate_slippage_percent(percent: Decimal) -> Result<(), ContractError> {
+    let max_slippage_percent = Decimal::from_str(PREDEFINED_MAX_SLIPPAGE_PERCENT)?;
+    if percent.is_zero() || percent > max_slippage_percent {
+        return Err(ContractError::InvalidPercent {
+            percent,
+            max: max_slippage_percent,
+        });
     }
 
     Ok(())
@@ -509,7 +515,8 @@ fn validate_slippage(
 
     let actual_token_decimal_amount = Decimal::from_str(actual_token_amount.to_string().as_str())?;
     let min_required_decimal_amount = actual_token_decimal_amount
-        - (actual_token_decimal_amount * max_slippage_percent) / Decimal::from_str(MAX_PERCENT)?;
+        - (actual_token_decimal_amount * max_slippage_percent)
+            / Decimal::from_str(PREDEFINED_MAX_PERCENT)?;
     let min_required_amount = min_required_decimal_amount.to_uint_floor();
 
     if min_token_amount < min_required_amount {
@@ -706,7 +713,7 @@ pub fn execute_update_slippage(
         return Err(ContractError::Unauthorized {});
     }
 
-    validate_percent(max_slippage_percent)?;
+    validate_slippage_percent(max_slippage_percent)?;
     MAX_SLIPPAGE_PERCENT.save(deps.storage, &max_slippage_percent)?;
 
     Ok(Response::new().add_attributes(vec![
@@ -728,7 +735,7 @@ pub fn execute_update_fee(
     }
 
     let total_fee_percent = lp_fee_percent + protocol_fee_percent;
-    let max_fee_percent = Decimal::from_str(MAX_FEE_PERCENT)?;
+    let max_fee_percent = Decimal::from_str(PREDEFINED_MAX_PERCENT)?;
     if total_fee_percent > max_fee_percent {
         return Err(ContractError::FeesTooHigh {
             max_fee_percent,
@@ -1842,7 +1849,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         MAX_SLIPPAGE_PERCENT
-            .save(&mut deps.storage, &Decimal::from_str("10").unwrap())
+            .save(&mut deps.storage, &Decimal::from_str("0.1").unwrap())
             .unwrap();
 
         let min_token_amount = Uint128::new(95_000);
@@ -1864,7 +1871,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         MAX_SLIPPAGE_PERCENT
-            .save(&mut deps.storage, &Decimal::from_str("10").unwrap())
+            .save(&mut deps.storage, &Decimal::from_str("0.1").unwrap())
             .unwrap();
 
         let min_token_amount = Uint128::new(105_000);
@@ -1875,22 +1882,34 @@ mod tests {
     }
 
     #[test]
-    fn should_fail_percent_validation_when_percent_greater_than_100() {
-        let percent = Decimal::from_str("110").unwrap();
-        let err = validate_percent(percent).unwrap_err();
-        assert_eq!(err, ContractError::InvalidPercent { percent });
+    fn should_fail_slippage_percent_validation_when_percent_greater_than_50() {
+        let percent = Decimal::from_str("0.6").unwrap();
+        let err = validate_slippage_percent(percent).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidPercent {
+                percent,
+                max: Decimal::from_str(PREDEFINED_MAX_SLIPPAGE_PERCENT).unwrap()
+            }
+        );
     }
 
     #[test]
-    fn should_fail_percent_validation_when_percent_in_0() {
+    fn should_fail_slippage_percent_validation_when_percent_is_0() {
         let percent = Decimal::from_str("0").unwrap();
-        let err = validate_percent(percent).unwrap_err();
-        assert_eq!(err, ContractError::InvalidPercent { percent });
+        let err = validate_slippage_percent(percent).unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::InvalidPercent {
+                percent,
+                max: Decimal::from_str(PREDEFINED_MAX_SLIPPAGE_PERCENT).unwrap()
+            }
+        );
     }
 
     #[test]
-    fn should_pass_percent_validation_when_percent_in_allowed_range() {
-        let res = validate_percent(Decimal::from_str("50").unwrap()).unwrap();
+    fn should_pass_slippage_percent_validation_when_percent_in_allowed_range() {
+        let res = validate_slippage_percent(Decimal::from_str("0.5").unwrap()).unwrap();
         assert_eq!(res, ());
     }
 

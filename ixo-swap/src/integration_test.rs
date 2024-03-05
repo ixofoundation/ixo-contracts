@@ -282,7 +282,7 @@ fn instantiate() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let supported_denom = "CARBON".to_string();
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
@@ -478,7 +478,7 @@ fn cw1155_to_cw1155_swap() {
     let token_ids_cw1155_first = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
     let token_ids_cw1155_second = vec![TokenId::from("SECOND/1"), TokenId::from("SECOND/2")];
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
@@ -732,7 +732,7 @@ fn cw1155_to_cw20_swap() {
 
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
@@ -935,7 +935,7 @@ fn cw1155_to_native_swap() {
     let cw1155_token = create_cw1155(&mut router, &owner);
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
@@ -1096,7 +1096,7 @@ fn amm_add_and_remove_liquidity() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
@@ -1557,7 +1557,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
@@ -1813,7 +1813,7 @@ fn freeze_pool() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
@@ -1897,7 +1897,7 @@ fn transfer_ownership() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
@@ -2021,7 +2021,7 @@ fn update_slippage() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
@@ -2039,7 +2039,7 @@ fn update_slippage() {
     let current_slippage = get_slippage(&router, &amm_addr);
     assert_eq!(max_slippage_percent, current_slippage.max_slippage_percent);
 
-    let new_max_slippage_percent = Decimal::from_str("15").unwrap();
+    let new_max_slippage_percent = Decimal::from_str("0.2").unwrap();
     let msg = ExecuteMsg::UpdateSlippage {
         max_slippage_percent: new_max_slippage_percent,
     };
@@ -2077,7 +2077,7 @@ fn update_fee() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("30").unwrap();
+    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.3").unwrap();
     let protocol_fee_percent = Decimal::zero();
