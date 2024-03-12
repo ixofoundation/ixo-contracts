@@ -141,7 +141,7 @@ fn validate_input_tokens(
         }
         (Denom::Cw1155(token1155_addr, _), Denom::Native(native_denom)) => {
             deps.api.addr_validate(token1155_addr.as_str())?;
-            validate_native_token_denom(&deps, native_denom)?;
+            // validate_native_token_denom(&deps, native_denom)?;
         }
         _ => return Err(ContractError::InvalidTokenType {}),
     }
