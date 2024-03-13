@@ -1,4 +1,4 @@
-use cosmwasm_std::{Decimal, StdError, Uint128};
+use cosmwasm_std::{CheckedMultiplyFractionError, Decimal, StdError, Uint128};
 use thiserror::Error;
 
 #[derive(Error, Debug, PartialEq)]
@@ -8,6 +8,9 @@ pub enum ContractError {
 
     #[error("{0}")]
     Cw20Error(#[from] cw20_base_lp::ContractError),
+
+    #[error("{0}")]
+    CheckedMultiplyFraction(#[from] CheckedMultiplyFractionError),
 
     #[error("{0}")]
     PaymentError(#[from] cw_utils::PaymentError),
