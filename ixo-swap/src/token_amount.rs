@@ -1,7 +1,7 @@
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryFrom};
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Decimal, StdError, StdResult, Uint128, Uint256};
+use cosmwasm_std::{CheckedMultiplyFractionError, Decimal, StdError, Uint128};
 use cw1155::TokenId;
 
 use crate::{
@@ -116,14 +116,16 @@ impl TokenAmount {
         Ok(TokenAmount::Multiple(amounts))
     }
 
-    fn get_percent_from_single(input_amount: Uint128, percent: Uint128) -> StdResult<TokenAmount> {
-        Ok(TokenAmount::Single(
-            input_amount
-                .full_mul(percent)
-                .checked_div(Uint256::from(SCALE_FACTOR))
-                .map_err(StdError::divide_by_zero)?
-                .try_into()?,
-        ))
+    fn get_percent_from_single(
+        input_amount: Uint128,
+        percent: Uint128,
+    ) -> Result<TokenAmount, CheckedMultiplyFractionError> {
+        let fraction = (SCALE_FACTOR.u128(), 1u128);
+        let result = input_amount
+            .full_mul(percent)
+            .checked_div_ceil(fraction)
+            .map_err(|err| err)?;
+        Ok(TokenAmount::Single(Uint128::try_from(result)?))
     }
 }
 
