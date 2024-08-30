@@ -172,14 +172,15 @@ fn create_amm(
     // set up amm contract
     let cw20_id = router.store_code(contract_cw20());
     let amm_id = router.store_code(contract_amm());
+
     let msg = InstantiateMsg {
-        token1155_denom,
-        token2_denom,
+        token1155_denom: token1155_denom.clone(),
+        token2_denom: token2_denom.clone(),
         lp_token_code_id: cw20_id,
         max_slippage_percent,
         lp_fee_percent,
         protocol_fee_percent,
-        protocol_fee_recipient,
+        protocol_fee_recipient: protocol_fee_recipient.clone(),
     };
     let init_msg = to_json_binary(&msg).unwrap();
     let msg = WasmMsg::Instantiate {
@@ -190,11 +191,22 @@ fn create_amm(
         label: "amm".to_string(),
     };
     let res = router.execute(owner.clone(), msg.into()).unwrap();
-    let event = Event::new("wasm").add_attribute(
-        "liquidity_pool_token_address",
-        format!("contract{}", cw20_id),
-    );
-    res.has_event(&event);
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "instantiate-ixo-swap"),
+        attr("owner", owner.to_string()),
+        attr("max_slippage_percent", max_slippage_percent.to_string()),
+        attr("lp_fee_percent", lp_fee_percent.to_string()),
+        attr("protocol_fee_percent", protocol_fee_percent.to_string()),
+        attr("protocol_fee_recipient", protocol_fee_recipient),
+        attr("token_1155_denom", token1155_denom.to_string()),
+        attr("token_2_denom", token2_denom.to_string()),
+    ]);
+    assert!(res.has_event(&event));
+    let event = Event::new("wasm").add_attributes(vec![
+        attr("action", "instantiate-lp-token"),
+        attr("liquidity_pool_token_address", format!("contract{}", cw20_id)),
+    ]);
+    assert!(res.has_event(&event));
 
     let data = parse_instantiate_response_data(res.data.unwrap_or_default().as_slice()).unwrap();
     Addr::unchecked(data.contract_address)
@@ -314,27 +326,28 @@ fn instantiate() {
     assert_eq!(fee.protocol_fee_percent, protocol_fee_percent);
     assert_eq!(fee.protocol_fee_recipient, owner.to_string());
 
-    // try instantiate with unsupported native denom
-    let cw20_id = router.store_code(contract_cw20());
-    let amm_id = router.store_code(contract_amm());
-    let msg = InstantiateMsg {
-        token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
-        token2_denom: Denom::Native("Unsupported".to_string()),
-        lp_token_code_id: cw20_id,
-        max_slippage_percent,
-        lp_fee_percent,
-        protocol_fee_percent,
-        protocol_fee_recipient: owner.to_string(),
-    };
-    let err = router
-        .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
-        .unwrap_err();
-    assert_eq!(
-        ContractError::UnsupportedTokenDenom {
-            id: "Unsupported".to_string()
-        },
-        err.downcast().unwrap()
-    );
+    // commenting this test case as removed bank DenomMetadata validation for native denoms
+    // // try instantiate with unsupported native denom
+    // let cw20_id = router.store_code(contract_cw20());
+    // let amm_id = router.store_code(contract_amm());
+    // let msg = InstantiateMsg {
+    //     token1155_denom: Denom::Cw1155(cw1155_token.clone(), supported_denom.clone()),
+    //     token2_denom: Denom::Native("Unsupported".to_string()),
+    //     lp_token_code_id: cw20_id,
+    //     max_slippage_percent,
+    //     lp_fee_percent,
+    //     protocol_fee_percent,
+    //     protocol_fee_recipient: owner.to_string(),
+    // };
+    // let err = router
+    //     .instantiate_contract(amm_id, owner.clone(), &msg, &[], "amm", None)
+    //     .unwrap_err();
+    // assert_eq!(
+    //     ContractError::UnsupportedTokenDenom {
+    //         id: "Unsupported".to_string()
+    //     },
+    //     err.downcast().unwrap()
+    // );
 
     // try instantiate with duplicated tokens
     let cw20_id = router.store_code(contract_cw20());
@@ -660,8 +673,13 @@ fn cw1155_to_cw1155_swap() {
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
         attr("action", "cross-contract-swap"),
+        attr("input_token_enum", "Token1155"),
         attr("input_token_amount", Uint128::new(50)),
-        attr("native_transferred", Uint128::new(33)),
+        attr("output_token_amount", Uint128::new(33)),
+        attr("output_amm_address", amm2.to_string()),
+        attr("recipient", owner.to_string()),
+        attr("token1155_reserve", Uint128::new(150)), // prev amount(100) plus added amount(50)
+        attr("token2_reserve", Uint128::new(67)), // prev amount(100) minus removed amount(33)
     ]);
     assert!(res.has_event(&event));
 
@@ -858,9 +876,13 @@ fn cw1155_to_cw20_swap() {
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
         attr("action", "swap"),
+        attr("sender", owner.clone()),
         attr("recipient", owner.clone()),
-        attr("token_sold", Uint128::new(50_000)),
-        attr("token_bought", Uint128::new(33_266)),
+        attr("input_token_enum", "Token1155"),
+        attr("input_token_amount", Uint128::new(50_000)),
+        attr("output_token_amount", Uint128::new(33_266)),
+        attr("token1155_reserve", Uint128::new(149950)), // prev amount(100_000) plus added amount(50_000) - minus fees(50)
+        attr("token2_reserve", Uint128::new(66_734)), // prev amount(100_000) minus removed amount(33_266)
     ]);
     assert!(res.has_event(&event));
 
@@ -1284,6 +1306,9 @@ fn amm_add_and_remove_liquidity() {
         attr("token1155_amount", Uint128::new(100)),
         attr("token2_amount", Uint128::new(100)),
         attr("liquidity_received", Uint128::new(100)),
+        attr("liquidity_receiver", owner.to_string()),
+        attr("token1155_reserve", Uint128::new(100)),
+        attr("token2_reserve", Uint128::new(100)),
     ]);
     assert!(res.has_event(&event));
 
@@ -1484,11 +1509,14 @@ fn amm_add_and_remove_liquidity() {
     let res = router
         .execute_contract(owner.clone(), amm_addr.clone(), &remove_liquidity_msg, &[])
         .unwrap();
-    let event = Event::new("wasm").add_attributes(vec![
+    let event: Event = Event::new("wasm").add_attributes(vec![
         attr("action", "remove-liquidity"),
-        attr("liquidity_burned", Uint128::new(50)),
         attr("token1155_returned", Uint128::new(50)),
         attr("token2_returned", Uint128::new(50)),
+        attr("liquidity_burned", Uint128::new(50)),
+        attr("liquidity_provider", owner.to_string()),
+        attr("token1155_reserve", Uint128::new(100)), // prev amount(150) minus removed amount(50)
+        attr("token2_reserve", Uint128::new(101)), // prev amount(151) minus removed amount(50)
     ]);
     assert!(res.has_event(&event));
 
@@ -1837,8 +1865,8 @@ fn freeze_pool() {
         .execute_contract(owner.clone(), amm_addr.clone(), &freeze_msg, &[])
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
-        attr("action", "freeze-contracts"),
-        attr("freeze_status", "true"),
+        attr("action", "freeze-deposits"),
+        attr("frozen", "true"),
     ]);
     assert!(res.has_event(&event));
 
@@ -1961,7 +1989,7 @@ fn transfer_ownership() {
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
         attr("action", "claim-ownership"),
-        attr("new_owner", new_owner.to_string()),
+        attr("owner", new_owner.to_string()),
     ]);
     assert!(res.has_event(&event));
 
@@ -2103,7 +2131,7 @@ fn update_fee() {
         .execute_contract(owner.clone(), amm_addr.clone(), &msg, &[])
         .unwrap();
     let event = Event::new("wasm").add_attributes(vec![
-        attr("action", "update-config"),
+        attr("action", "update-fee"),
         attr("lp_fee_percent", lp_fee_percent.to_string()),
         attr("protocol_fee_percent", protocol_fee_percent.to_string()),
         attr("protocol_fee_recipient", "new_fee_recipient".to_string()),

@@ -108,9 +108,22 @@ pub fn instantiate(
     let reply_msg =
         SubMsg::reply_on_success(instantiate_lp_token_msg, INSTANTIATE_LP_TOKEN_REPLY_ID);
 
-    Ok(Response::new().add_submessage(reply_msg))
+    Ok(Response::new()
+        .add_submessage(reply_msg)
+        .add_attributes(vec![
+            attr("action", "instantiate-ixo-swap"),
+            attr("owner", info.sender),
+            attr("max_slippage_percent", msg.max_slippage_percent.to_string()),
+            attr("lp_fee_percent", msg.lp_fee_percent.to_string()),
+            attr("protocol_fee_percent", msg.protocol_fee_percent.to_string()),
+            attr("protocol_fee_recipient", msg.protocol_fee_recipient),
+            attr("token_1155_denom", msg.token1155_denom.to_string()),
+            attr("token_2_denom", msg.token2_denom.to_string()),
+        ])
+      )
 }
 
+/// Validates that slippage percent is not zero and less than max slippage percent
 fn validate_slippage_percent(percent: Decimal) -> Result<(), ContractError> {
     let max_slippage_percent = Decimal::from_str(PREDEFINED_MAX_SLIPPAGE_PERCENT)?;
     if percent.is_zero() || percent > max_slippage_percent {
@@ -139,9 +152,14 @@ fn validate_input_tokens(
                 });
             }
         }
-        (Denom::Cw1155(token1155_addr, _), Denom::Native(native_denom)) => {
+        (Denom::Cw1155(token1155_addr, _), Denom::Native(_native_denom)) => {
             deps.api.addr_validate(token1155_addr.as_str())?;
-            validate_native_token_denom(&deps, native_denom)?;
+            // Removing this as we deem it unnecessary, since this validates against the bank modules
+            // registered DenomMetadata, but we want to allow any native denom to be used, including
+            // ibc tokens, without the need to add it to the bank modules DenomMetadata
+            // The audited security severity was minor since this just prevents against a misconfiguration
+            // by the contract instantiator, thus we deem it okay to bypass this validation
+            // validate_native_token_denom(&deps, native_denom)?;
         }
         _ => return Err(ContractError::InvalidTokenType {}),
     }
@@ -279,22 +297,26 @@ fn execute_freeze_deposits(
     sender: Addr,
     freeze: bool,
 ) -> Result<Response, ContractError> {
+    // validate that sender is owner
     if sender != OWNER.load(deps.storage)? {
         return Err(ContractError::UnauthorizedPoolFreeze {});
     }
 
+    // update freeze status and save to storage if not same as current freeze status
     FROZEN.update(deps.storage, |freeze_status| -> Result<_, ContractError> {
         if freeze_status.eq(&freeze) {
             return Err(ContractError::DuplicatedFreezeStatus { freeze_status });
         }
         Ok(freeze)
     })?;
+
     Ok(Response::new().add_attributes(vec![
-        attr("action", "freeze-contracts"),
-        attr("freeze_status", freeze.to_string()),
+        attr("action", "freeze-deposits"),
+        attr("frozen", freeze.to_string()),
     ]))
 }
 
+/// Validates that expiration is not expired against block height or time
 fn check_expiration(
     expiration: &Option<Expiration>,
     block: &BlockInfo,
@@ -310,6 +332,11 @@ fn check_expiration(
     }
 }
 
+/// Calculates the amount of lp token to mint by:
+///
+/// 1 - if liquidity supply is zero then return token1_amount
+///
+/// 2 - if liquidity supply is not zero then return token1_amount * liquidity_supply / token1_reserve
 fn get_lp_token_amount_to_mint(
     token1_amount: Uint128,
     liquidity_supply: Uint128,
@@ -326,6 +353,11 @@ fn get_lp_token_amount_to_mint(
     }
 }
 
+/// Calculates the amount of token2 required for adding to liquidity pool by:
+///
+/// 1 - if liquidity supply is zero then return max_token
+///
+/// 2 - if liquidity supply is not zero then return token1_amount * token2_reserve / token1_reserve + 1
 fn get_token2_amount_required(
     max_token: Uint128,
     token1_amount: Uint128,
@@ -370,6 +402,7 @@ pub fn execute_add_liquidity(
         &info.sender,
     )?;
 
+    // calculate liquidity amount based on input amounts and do validation
     let token1155_total_amount = TokenAmount::Multiple(token1155_amounts.clone()).get_total();
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let liquidity_amount =
@@ -385,6 +418,7 @@ pub fn execute_add_liquidity(
         token1155.reserve,
     )?;
 
+    // check that liquidity amount is more than users min liquidity
     if liquidity_amount < min_liquidity {
         return Err(ContractError::MinLiquidityError {
             min_liquidity,
@@ -392,6 +426,7 @@ pub fn execute_add_liquidity(
         });
     }
 
+    // check that token2 amount that will be used is less than max token provided by user
     if token2_amount > max_token2 {
         return Err(ContractError::MaxTokenError {
             max_token: max_token2,
@@ -399,8 +434,8 @@ pub fn execute_add_liquidity(
         });
     }
 
-    // Generate cw20 transfer messages if necessary
     let mut transfer_msgs: Vec<CosmosMsg> = vec![];
+    // add transfer message for 1155 tokens
     if let Denom::Cw1155(addr, _) = token1155.denom {
         transfer_msgs.push(get_cw1155_transfer_msg(
             &info.sender,
@@ -409,6 +444,8 @@ pub fn execute_add_liquidity(
             &token1155_amounts,
         )?)
     }
+
+    // if token2 is cw20 then add transfer message
     if let Denom::Cw20(addr) = token2.denom.clone() {
         transfer_msgs.push(get_cw20_transfer_from_msg(
             &info.sender,
@@ -429,15 +466,17 @@ pub fn execute_add_liquidity(
         }
     }
 
-    TOKEN1155.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    // update token reserves with newly added amounts
+    let updated_token1155 = TOKEN1155.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve += token1155_total_amount;
         Ok(token)
     })?;
-    TOKEN2.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    let updated_token2 = TOKEN2.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve += token2_amount;
         Ok(token)
     })?;
 
+    // update lp token supplies to know what 1155 tokens is owned by the contract
     for (token_id, token_amount) in token1155_amounts.into_iter() {
         TOKEN_SUPPLIES.update(
             deps.storage,
@@ -451,18 +490,24 @@ pub fn execute_add_liquidity(
         )?;
     }
 
-    let mint_msg = mint_lp_tokens(&info.sender, liquidity_amount, &lp_token_addr)?;
+    // mint lp tokens to user
+    transfer_msgs.push(mint_lp_tokens(&info.sender, liquidity_amount, &lp_token_addr)?);
+
     Ok(Response::new()
         .add_messages(transfer_msgs)
-        .add_message(mint_msg)
         .add_attributes(vec![
             attr("action", "add-liquidity"),
             attr("token1155_amount", token1155_total_amount),
             attr("token2_amount", token2_amount),
             attr("liquidity_received", liquidity_amount),
+            attr("liquidity_receiver", info.sender.to_string()),
+            attr("token1155_reserve", updated_token1155.reserve),
+            attr("token2_reserve", updated_token2.reserve),
         ]))
 }
 
+/// Validates that native token denom is supported by the bank module's DebomMetadata
+#[allow(dead_code)]
 fn validate_native_token_denom(deps: &DepsMut, denom: &String) -> Result<(), ContractError> {
     let denom_metadata: QueryDenomMetadataResponse =
         query_denom_metadata(deps.as_ref(), denom.clone())?;
@@ -474,6 +519,8 @@ fn validate_native_token_denom(deps: &DepsMut, denom: &String) -> Result<(), Con
     Ok(())
 }
 
+/// Validates that 1155 tokens have supported denom as well as query each
+/// token id from chain's Token module to ensure that it is a valid token
 fn validate_token1155_denom(
     deps: &DepsMut,
     denom: &Denom,
@@ -498,6 +545,7 @@ fn validate_token1155_denom(
     Ok(())
 }
 
+/// Validates that min token is above zero
 fn validate_min_token(min_token: Uint128) -> Result<(), ContractError> {
     if min_token.is_zero() {
         return Err(ContractError::MinTokenError {});
@@ -506,6 +554,8 @@ fn validate_min_token(min_token: Uint128) -> Result<(), ContractError> {
     Ok(())
 }
 
+/// Validates that slippage is ok by calculating the minimum possible amount based on MAX_SLIPPAGE_PERCENT constant
+/// and validates that min_token_amount is more than that minimum amount
 fn validate_slippage(
     deps: &DepsMut,
     min_token_amount: Uint128,
@@ -529,6 +579,7 @@ fn validate_slippage(
     Ok(())
 }
 
+/// Creates a ixo1155 transfer message for all tokens in tokens hashmap
 fn get_cw1155_transfer_msg(
     owner: &Addr,
     recipient: &Addr,
@@ -555,6 +606,7 @@ fn get_cw1155_transfer_msg(
     Ok(cw1155_transfer_cosmos_msg)
 }
 
+/// Queries the total supply of lp token, which is cw20 contract on chain
 fn get_lp_token_supply(deps: Deps, lp_token_addr: &Addr) -> StdResult<Uint128> {
     let resp: cw20_lp::TokenInfoResponse = deps
         .querier
@@ -562,6 +614,7 @@ fn get_lp_token_supply(deps: Deps, lp_token_addr: &Addr) -> StdResult<Uint128> {
     Ok(resp.total_supply)
 }
 
+/// Creates a mint message for the given amount of lp token to the given recipient
 fn mint_lp_tokens(
     recipient: &Addr,
     liquidity_amount: Uint128,
@@ -579,6 +632,7 @@ fn mint_lp_tokens(
     .into())
 }
 
+/// Queries the balance of the given cw20 contract on chain
 fn get_token_balance(deps: Deps, contract: &Addr, addr: &Addr) -> StdResult<Uint128> {
     let resp: cw20_lp::BalanceResponse = deps.querier.query_wasm_smart(
         contract,
@@ -589,6 +643,7 @@ fn get_token_balance(deps: Deps, contract: &Addr, addr: &Addr) -> StdResult<Uint
     Ok(resp.balance)
 }
 
+/// validates that when input token is Native denom, then info.funds is same as input amount and that user has enough funds
 fn validate_input_amount(
     actual_funds: &[Coin],
     given_amount: &TokenAmount,
@@ -614,13 +669,13 @@ fn validate_input_amount(
     }
 }
 
+/// Creates a cw20 transfer message for the given token amount
 fn get_cw20_transfer_from_msg(
     owner: &Addr,
     recipient: &Addr,
     token_addr: &Addr,
     token_amount: Uint128,
 ) -> Result<CosmosMsg, ContractError> {
-    // create transfer cw20 msg
     let transfer_cw20_msg = Cw20ExecuteMsg::TransferFrom {
         owner: owner.into(),
         recipient: recipient.into(),
@@ -635,6 +690,7 @@ fn get_cw20_transfer_from_msg(
     Ok(cw20_transfer_cosmos_msg)
 }
 
+/// Creates a cw20 increase allowance message for the given token amount and spender
 fn get_cw20_increase_allowance_msg(
     token_addr: &Addr,
     spender: &Addr,
@@ -660,12 +716,15 @@ pub fn execute_transfer_ownership(
     info: MessageInfo,
     new_owner: Option<String>,
 ) -> Result<Response, ContractError> {
+    // validate that sender is owner
     let owner = OWNER.load(deps.storage)?;
     if info.sender != owner {
         return Err(ContractError::Unauthorized {});
     }
 
     let mut attributes = vec![attr("action", "transfer-ownership")];
+
+    // validate that new owner is valid and not same as current owner
     let new_owner_addr = new_owner
         .as_ref()
         .map(|h| deps.api.addr_validate(h))
@@ -675,9 +734,10 @@ pub fn execute_transfer_ownership(
             return Err(ContractError::DuplicatedOwner {});
         }
 
-        attributes.push(attr("pending_owner", new_owner_addr))
+        attributes.push(attr("pending_owner", new_owner_addr.to_string()))
     }
 
+    // save new owner to pending owner
     PENDING_OWNER.save(deps.storage, &new_owner_addr)?;
 
     Ok(Response::new().add_attributes(attributes))
@@ -690,14 +750,17 @@ pub fn execute_claim_ownership(
     let pending_owner = PENDING_OWNER.load(deps.storage)?;
 
     let mut attributes = vec![attr("action", "claim-ownership")];
+
+    // validate that sender is pending owner
     if let Some(pending_owner) = pending_owner {
         if info.sender != pending_owner {
             return Err(ContractError::Unauthorized {});
         }
 
+        // save new owner to storage and remove pending owner
         PENDING_OWNER.save(deps.storage, &None)?;
         OWNER.save(deps.storage, &pending_owner)?;
-        attributes.push(attr("new_owner", pending_owner));
+        attributes.push(attr("owner", pending_owner.to_string()));
     }
 
     Ok(Response::new().add_attributes(attributes))
@@ -708,11 +771,13 @@ pub fn execute_update_slippage(
     info: MessageInfo,
     max_slippage_percent: Decimal,
 ) -> Result<Response, ContractError> {
+    // validate that sender is owner
     let owner = OWNER.load(deps.storage)?;
     if info.sender != owner {
         return Err(ContractError::Unauthorized {});
     }
 
+    // validate slippage and save to storage
     validate_slippage_percent(max_slippage_percent)?;
     MAX_SLIPPAGE_PERCENT.save(deps.storage, &max_slippage_percent)?;
 
@@ -729,11 +794,13 @@ pub fn execute_update_fee(
     protocol_fee_percent: Decimal,
     protocol_fee_recipient: String,
 ) -> Result<Response, ContractError> {
+    // validate that sender is owner
     let owner = OWNER.load(deps.storage)?;
     if info.sender != owner {
         return Err(ContractError::Unauthorized {});
     }
 
+    // validate that total fee percent is less than max fee percent
     let total_fee_percent = lp_fee_percent + protocol_fee_percent;
     let max_fee_percent = Decimal::from_str(PREDEFINED_MAX_PERCENT)?;
     if total_fee_percent > max_fee_percent {
@@ -743,6 +810,7 @@ pub fn execute_update_fee(
         });
     }
 
+    // update fees and save to storage
     let protocol_fee_recipient = deps.api.addr_validate(&protocol_fee_recipient)?;
     let updated_fees = Fees {
         protocol_fee_recipient: protocol_fee_recipient.clone(),
@@ -752,7 +820,7 @@ pub fn execute_update_fee(
     FEES.save(deps.storage, &updated_fees)?;
 
     Ok(Response::new().add_attributes(vec![
-        attr("action", "update-config"),
+        attr("action", "update-fee"),
         attr("lp_fee_percent", lp_fee_percent.to_string()),
         attr("protocol_fee_percent", protocol_fee_percent.to_string()),
         attr("protocol_fee_recipient", protocol_fee_recipient.to_string()),
@@ -771,11 +839,13 @@ pub fn execute_remove_liquidity(
     check_expiration(&expiration, &env.block)?;
 
     let lp_token_addr = LP_ADDRESS.load(deps.storage)?;
+    // get users current liquidity tokens balance
     let balance = get_token_balance(deps.as_ref(), &lp_token_addr, &info.sender)?;
     let lp_token_supply = get_lp_token_supply(deps.as_ref(), &lp_token_addr)?;
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
 
+    // if amount user wants to remove is more than users balance, error
     if amount > balance {
         return Err(ContractError::InsufficientLiquidityError {
             requested: amount,
@@ -787,11 +857,14 @@ pub fn execute_remove_liquidity(
     validate_min_token(min_token1155_total_amount)?;
     validate_min_token(min_token2)?;
 
+    // calculate 1155 amount user will get: amount * token1155_reserve / lp_token_supply
     let token1155_amount = amount
         .checked_mul(token1155.reserve)
         .map_err(StdError::overflow)?
         .checked_div(lp_token_supply)
         .map_err(StdError::divide_by_zero)?;
+
+    // calculate token2 amount user will get: amount * token2_reserve / lp_token_supply
     let token2_amount = amount
         .checked_mul(token2.reserve)
         .map_err(StdError::overflow)?
@@ -801,6 +874,7 @@ pub fn execute_remove_liquidity(
     validate_slippage(&deps, min_token1155_total_amount, token1155_amount)?;
     validate_slippage(&deps, min_token2, token2_amount)?;
 
+    // checks that output tokens is more than users minimum defined
     if token1155_amount < min_token1155_total_amount {
         return Err(ContractError::MinToken1155Error {
             requested: min_token1155_total_amount,
@@ -814,15 +888,15 @@ pub fn execute_remove_liquidity(
         });
     }
 
-    TOKEN1155.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    // update token reserves by subtracting input amounts
+    let updated_token1155 = TOKEN1155.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve = token
             .reserve
             .checked_sub(token1155_amount)
             .map_err(StdError::overflow)?;
         Ok(token)
     })?;
-
-    TOKEN2.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    let updated_token2 = TOKEN2.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve = token
             .reserve
             .checked_sub(token2_amount)
@@ -830,10 +904,12 @@ pub fn execute_remove_liquidity(
         Ok(token)
     })?;
 
+    // get the 1155 tokens to transfer, and update the TOKEN_SUPPLIES by subtracting all the tokens from the supply
     let token1155_amounts_to_transfer =
         get_token_amounts_to_transfer(deps.storage, token1155_amount, min_token1155)?;
 
     let mut msgs: Vec<CosmosMsg> = vec![];
+    // add transfer message for 1155 tokens
     if let Denom::Cw1155(addr, _) = token1155.denom {
         msgs.push(get_cw1155_transfer_msg(
             &env.contract.address,
@@ -843,6 +919,7 @@ pub fn execute_remove_liquidity(
         )?)
     };
 
+    // add transfer message for token2
     match token2.denom {
         Denom::Cw20(addr) => msgs.push(get_cw20_transfer_to_msg(
             &info.sender,
@@ -857,16 +934,26 @@ pub fn execute_remove_liquidity(
         _ => {}
     };
 
+    // burn lp tokens from user
     msgs.push(get_burn_msg(&lp_token_addr, &info.sender, amount)?);
 
     Ok(Response::new().add_messages(msgs).add_attributes(vec![
         attr("action", "remove-liquidity"),
-        attr("liquidity_burned", amount),
         attr("token1155_returned", token1155_amount),
         attr("token2_returned", token2_amount),
+        attr("liquidity_burned", amount),
+        attr("liquidity_provider", info.sender.to_string()),
+        attr("token1155_reserve", updated_token1155.reserve),
+        attr("token2_reserve", updated_token2.reserve),
     ]))
 }
 
+/// Gets a map of 1155 tokens to transfer based on the token1155_amount to transfer by:
+///
+/// 1 - if min_token1155 is single then it gets any random tokens from the TOKEN_SUPPLIES till amount is reached
+///
+/// 2 - if min_token1155 is multiple then it gets the amount of tokens from the TOKEN_SUPPLIES that matches the multiple
+/// inputs, otherwise it throws and error if the amount of tokens from the TOKEN_SUPPLIES is less than the amount
 fn get_token_amounts_to_transfer(
     storage: &mut dyn Storage,
     token1155_amount: Uint128,
@@ -996,6 +1083,7 @@ fn update_token_amounts(
     update_token_supplies(storage, remaining_supply, token_id.clone(), token_supplies)
 }
 
+/// Updates the TOKEN_SUPPLIES by subtracting the amount of tokens from the total supply and removing the token id if it is zero
 fn update_token_supplies(
     storage: &mut dyn Storage,
     remaining_supply: Uint128,
@@ -1019,6 +1107,7 @@ fn update_token_supplies(
     Ok(())
 }
 
+/// Creates a burn message for the given amount of lp token from the given owner
 fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<CosmosMsg> {
     let msg = cw20_base_lp::msg::ExecuteMsg::BurnFrom {
         owner: owner.to_string(),
@@ -1032,6 +1121,7 @@ fn get_burn_msg(contract: &Addr, owner: &Addr, amount: Uint128) -> StdResult<Cos
     .into())
 }
 
+/// Creates a cw20 transfer message for the given token amount, from contract to recipient
 fn get_cw20_transfer_to_msg(
     recipient: &Addr,
     token_addr: &Addr,
@@ -1051,6 +1141,7 @@ fn get_cw20_transfer_to_msg(
     Ok(cw20_transfer_cosmos_msg)
 }
 
+/// Creates a bank transfer message for the given amount for a native denom, will always be from contract to recipient
 fn get_bank_transfer_to_msg(recipient: &Addr, denom: &str, native_amount: Uint128) -> CosmosMsg {
     let transfer_bank_msg = cosmwasm_std::BankMsg::Send {
         to_address: recipient.into(),
@@ -1064,6 +1155,7 @@ fn get_bank_transfer_to_msg(recipient: &Addr, denom: &str, native_amount: Uint12
     transfer_bank_cosmos_msg
 }
 
+/// Creates a transfer message for the given amount and denom, from sender to recipient
 fn get_fee_transfer_msg(
     sender: &Addr,
     recipient: &Addr,
@@ -1085,6 +1177,17 @@ fn get_fee_transfer_msg(
     }
 }
 
+/// Calculates the amount of tokens the user bought by:.
+///
+/// 1 - if either reserve is zero throws error
+///
+/// 2 - create fee percent with SCALE_FACTOR and calculate input_amount_with_fee
+///
+/// 3 - calculate numerator: input_amount_with_fee * output_reserve
+///
+/// 4 - calculate denominator: input_reserve * SCALE_FACTOR + input_amount_with_fee
+///
+/// 5 - calculate amount bought: numerator / denominator
 fn get_input_price(
     input_amount: Uint128,
     input_reserve: Uint128,
@@ -1113,6 +1216,13 @@ fn get_input_price(
         .try_into()?)
 }
 
+/// Calculates the amount of tokens the reserves get, aka input amount minus the protocol fees, by:
+///
+/// 1 - if fee amount is none then return input amount
+///
+/// 2 - if fee amount is some then return input amount - fee amount
+/// For single token input amount, it is input amount - fee amount
+/// For multiple token input amount, it is input amount - fee amount for each token
 fn get_amount_without_fee(
     input_amount: &TokenAmount,
     fee_amount: Option<TokenAmount>,
@@ -1154,6 +1264,7 @@ pub fn execute_swap(
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &env.block)?;
 
+    // map tokens to type and load from storage
     let input_token_item = match input_token_enum {
         TokenSelect::Token1155 => TOKEN1155,
         TokenSelect::Token2 => TOKEN2,
@@ -1176,6 +1287,7 @@ pub fn execute_swap(
     let input_amount_total = input_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    // get the calculated amount of tokens bought
     let mut token_bought = get_input_price(
         input_amount_total,
         input_token.reserve,
@@ -1185,18 +1297,21 @@ pub fn execute_swap(
 
     validate_slippage(&deps, min_token_total, token_bought)?;
 
+    // check that token_bought is more than min_token_total provided by user
     if min_token_total > token_bought {
         return Err(ContractError::SwapMinError {
             min: min_token_total,
             available: token_bought,
         });
     }
-    // Calculate fees
+
     let protocol_fee_amount = input_amount.get_percent(fees.protocol_fee_percent)?;
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_amount, protocol_fee_amount.clone())?;
 
     let mut msgs = vec![];
+    // switch on input token denom and add transfer message from user to contract
+    // no need for native transfer as info.funds is same as input amount and will be transfered to contract
     match input_token.denom.clone() {
         Denom::Cw1155(addr, _) => msgs.push(get_cw1155_transfer_msg(
             &info.sender,
@@ -1224,7 +1339,7 @@ pub fn execute_swap(
     }
 
     let recipient = deps.api.addr_validate(&recipient)?;
-    // Create transfer to message
+    // switch on output token denom and add transfer message from contract to recipient(user)
     msgs.push(match output_token.denom {
         Denom::Cw1155(addr, _) => {
             let tokens_to_transfer =
@@ -1242,7 +1357,8 @@ pub fn execute_swap(
         Denom::Native(denom) => get_bank_transfer_to_msg(&recipient, &denom, token_bought),
     });
 
-    input_token_item.update(
+    // update input token reserve adding input amount without protocol fee
+    let updated_input_token = input_token_item.update(
         deps.storage,
         |mut input_token| -> Result<_, ContractError> {
             let input_amount_without_protocol_fee_total =
@@ -1256,7 +1372,8 @@ pub fn execute_swap(
         },
     )?;
 
-    output_token_item.update(
+    // update output token reserve by subtracting token_bought
+    let updated_output_token = output_token_item.update(
         deps.storage,
         |mut output_token| -> Result<_, ContractError> {
             output_token.reserve = output_token
@@ -1267,6 +1384,7 @@ pub fn execute_swap(
         },
     )?;
 
+    // update lp token supplies by adding input amount if it multiple as it is 1155 tokens then and need to keep track of id and amount
     if let TokenAmount::Multiple(input_amounts) = input_amount_without_protocol_fee {
         for (token_id, token_amount) in input_amounts.into_iter() {
             TOKEN_SUPPLIES.update(
@@ -1282,12 +1400,30 @@ pub fn execute_swap(
         }
     }
 
-    Ok(Response::new().add_messages(msgs).add_attributes(vec![
+    // Attributes for response
+    let mut attributes = vec![
         attr("action", "swap"),
-        attr("recipient", recipient),
-        attr("token_sold", input_amount_total),
-        attr("token_bought", token_bought),
-    ]))
+        attr("sender", info.sender.to_string()),
+        attr("recipient", recipient.to_string()),
+        attr("input_token_enum", input_token_enum.to_string()),
+        attr("input_token_amount", input_amount_total),
+        attr("output_token_amount", token_bought),
+    ];
+
+    // Add updated reserves based on the token type
+    match input_token_enum {
+        TokenSelect::Token1155 => {
+            attributes.push(attr("token1155_reserve", updated_input_token.reserve));
+            attributes.push(attr("token2_reserve", updated_output_token.reserve));
+        }
+        TokenSelect::Token2 => {
+            attributes.push(attr("token1155_reserve", updated_output_token.reserve));
+            attributes.push(attr("token2_reserve", updated_input_token.reserve));
+        }
+    }
+
+
+    Ok(Response::new().add_messages(msgs).add_attributes(attributes))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1303,6 +1439,7 @@ pub fn execute_pass_through_swap(
 ) -> Result<Response, ContractError> {
     check_expiration(&expiration, &env.block)?;
 
+    // map tokens to type and load from storage
     let input_token_state = match input_token_enum {
         TokenSelect::Token1155 => TOKEN1155,
         TokenSelect::Token2 => TOKEN2,
@@ -1332,6 +1469,7 @@ pub fn execute_pass_through_swap(
     let input_token_amount_total = input_token_amount.get_total();
     let fees = FEES.load(deps.storage)?;
     let total_fee_percent = fees.lp_fee_percent + fees.protocol_fee_percent;
+    // get the calculated amount of tokens bought
     let amount_to_transfer = get_input_price(
         input_token_amount_total,
         input_token.reserve,
@@ -1374,7 +1512,7 @@ pub fn execute_pass_through_swap(
 
     let output_amm_address = deps.api.addr_validate(&output_amm_address)?;
 
-    // Increase allowance of output contract is transfer token is cw20
+    // Increase allowance of output contract if transfer token is cw20
     if let Denom::Cw20(addr) = &transfer_token.denom {
         msgs.push(get_cw20_increase_allowance_msg(
             addr,
@@ -1384,6 +1522,7 @@ pub fn execute_pass_through_swap(
         )?)
     };
 
+    // query info of output amm
     let resp: InfoResponse = deps
         .querier
         .query_wasm_smart(&output_amm_address, &QueryMsg::Info {})?;
@@ -1396,6 +1535,7 @@ pub fn execute_pass_through_swap(
         Err(ContractError::InvalidOutputPool {})
     }?;
 
+    // create swap and send to message
     let swap_msg = ExecuteMsg::SwapAndSendTo {
         input_token: transfer_input_token_enum,
         input_amount: TokenAmount::Single(amount_to_transfer),
@@ -1404,9 +1544,10 @@ pub fn execute_pass_through_swap(
         expiration,
     };
 
+    let output_amm_address_clone = output_amm_address.clone();
     msgs.push(
         WasmMsg::Execute {
-            contract_addr: output_amm_address.into(),
+            contract_addr: output_amm_address_clone.into(),
             msg: to_json_binary(&swap_msg)?,
             funds: match transfer_token.denom {
                 Denom::Native(denom) => vec![Coin {
@@ -1419,7 +1560,8 @@ pub fn execute_pass_through_swap(
         .into(),
     );
 
-    input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    // update input token reserve by adding input amount without protocol fee
+    let updated_input_token = input_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         // Add input amount - protocol fee to input token reserve
         let input_amount_without_protocol_fee_total = input_amount_without_protocol_fee.get_total();
         token.reserve = token
@@ -1430,7 +1572,8 @@ pub fn execute_pass_through_swap(
         Ok(token)
     })?;
 
-    transfer_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
+    // update output token reserve by subtracting amount to transfer
+    let updated_transfer_token = transfer_token_state.update(deps.storage, |mut token| -> Result<_, ContractError> {
         token.reserve = token
             .reserve
             .checked_sub(amount_to_transfer)
@@ -1439,6 +1582,7 @@ pub fn execute_pass_through_swap(
         Ok(token)
     })?;
 
+    // update lp token supplies by adding input amount if it multiple as it is 1155 tokens then and need to keep track of id and amount
     if let TokenAmount::Multiple(input_amounts) = input_amount_without_protocol_fee {
         for (token_id, token_amount) in input_amounts.into_iter() {
             TOKEN_SUPPLIES.update(
@@ -1454,11 +1598,29 @@ pub fn execute_pass_through_swap(
         }
     }
 
-    Ok(Response::new().add_messages(msgs).add_attributes(vec![
+    // Attributes for response
+    let mut attributes = vec![
         attr("action", "cross-contract-swap"),
+        attr("input_token_enum", input_token_enum.to_string()),
         attr("input_token_amount", input_token_amount_total),
-        attr("native_transferred", amount_to_transfer),
-    ]))
+        attr("output_token_amount", amount_to_transfer),
+        attr("output_amm_address", output_amm_address.to_string()),
+        attr("recipient", info.sender.to_string()),
+    ];
+
+    // Add updated reserves based on the token type
+    match input_token_enum {
+        TokenSelect::Token1155 => {
+            attributes.push(attr("token1155_reserve", updated_input_token.reserve));
+            attributes.push(attr("token2_reserve", updated_transfer_token.reserve));
+        }
+        TokenSelect::Token2 => {
+            attributes.push(attr("token1155_reserve", updated_transfer_token.reserve));
+            attributes.push(attr("token2_reserve", updated_input_token.reserve));
+        }
+    }
+
+    Ok(Response::new().add_messages(msgs).add_attributes(attributes))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -1495,6 +1657,7 @@ pub fn query_denom_metadata(deps: Deps, denom: String) -> StdResult<QueryDenomMe
     })
 }
 
+/// Queries the total supply of lp tokens for the given tokens id
 pub fn query_tokens_supply(
     deps: Deps,
     tokens_id: Vec<TokenId>,
@@ -1510,6 +1673,7 @@ pub fn query_tokens_supply(
     Ok(TokenSuppliesResponse { supplies })
 }
 
+/// Queries the MAX slippage percent
 pub fn query_slippage(deps: Deps) -> StdResult<SlippageResponse> {
     let max_slippage_percent = MAX_SLIPPAGE_PERCENT.load(deps.storage)?;
 
@@ -1518,6 +1682,7 @@ pub fn query_slippage(deps: Deps) -> StdResult<SlippageResponse> {
     })
 }
 
+/// Queries the info of the contract, includes token reserves/denoms and lp supply/token address
 pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
     let token1155 = TOKEN1155.load(deps.storage)?;
     let token2 = TOKEN2.load(deps.storage)?;
@@ -1533,6 +1698,7 @@ pub fn query_info(deps: Deps) -> StdResult<InfoResponse> {
     })
 }
 
+/// Queries the ownership of the contract, includes owner and pending owner
 pub fn query_ownership(deps: Deps) -> StdResult<OwnershipResponse> {
     let owner = OWNER.load(deps.storage)?.to_string();
     let pending_owner = PENDING_OWNER.load(deps.storage)?.map(|o| o.into_string());
@@ -1543,6 +1709,7 @@ pub fn query_ownership(deps: Deps) -> StdResult<OwnershipResponse> {
     })
 }
 
+/// Queries the freeze status of the contract
 pub fn query_freeze_status(deps: Deps) -> StdResult<FreezeStatusResponse> {
     let freeze_status = FROZEN.load(deps.storage)?;
 
@@ -1551,6 +1718,7 @@ pub fn query_freeze_status(deps: Deps) -> StdResult<FreezeStatusResponse> {
     })
 }
 
+/// Queries the price in token2 for the wanted token1155 amount
 pub fn query_token1155_for_token2_price(
     deps: Deps,
     token1155_amount: TokenAmount,
@@ -1571,6 +1739,7 @@ pub fn query_token1155_for_token2_price(
     Ok(Token1155ForToken2PriceResponse { token2_amount })
 }
 
+/// Queries the price in token1155 for the wanted token2 amount
 pub fn query_token2_for_token1155_price(
     deps: Deps,
     token2_amount: TokenAmount,
@@ -1591,6 +1760,7 @@ pub fn query_token2_for_token1155_price(
     Ok(Token2ForToken1155PriceResponse { token1155_amount })
 }
 
+/// Queries the fees of the contract, includes lp fee percent, protocol fee percent and protocol fee recipient
 pub fn query_fee(deps: Deps) -> StdResult<FeeResponse> {
     let fees = FEES.load(deps.storage)?;
 
@@ -1615,7 +1785,10 @@ pub fn reply(deps: DepsMut, _env: Env, msg: Reply) -> Result<Response, ContractE
             // Save gov token
             LP_ADDRESS.save(deps.storage, &cw20_addr)?;
 
-            Ok(Response::new().add_attribute("liquidity_pool_token_address", cw20_addr))
+            Ok(Response::new().add_attributes(vec![
+                attr("action", "instantiate-lp-token"),
+                attr("liquidity_pool_token_address", cw20_addr),
+            ]))
         }
         Err(_) => Err(ContractError::InstantiateLpTokenError {}),
     }
