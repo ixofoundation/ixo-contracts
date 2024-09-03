@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::str::FromStr;
 
@@ -136,6 +136,9 @@ fn validate_slippage_percent(percent: Decimal) -> Result<(), ContractError> {
     Ok(())
 }
 
+/// Validates the input tokens by:
+/// - checking that the addresses are valid.
+/// - checking that the token addresses are different.
 fn validate_input_tokens(
     deps: &DepsMut,
     token1155_denom: &Denom,
@@ -292,6 +295,7 @@ pub fn execute(
     }
 }
 
+/// Executes the `FreezeDeposits` message.
 fn execute_freeze_deposits(
     deps: DepsMut,
     sender: Addr,
@@ -333,10 +337,8 @@ fn check_expiration(
 }
 
 /// Calculates the amount of lp token to mint by:
-///
-/// 1 - if liquidity supply is zero then return token1_amount
-///
-/// 2 - if liquidity supply is not zero then return token1_amount * liquidity_supply / token1_reserve
+/// - if liquidity supply is zero then return token1_amount
+/// - if liquidity supply is not zero then return token1_amount * liquidity_supply / token1_reserve
 fn get_lp_token_amount_to_mint(
     token1_amount: Uint128,
     liquidity_supply: Uint128,
@@ -354,10 +356,8 @@ fn get_lp_token_amount_to_mint(
 }
 
 /// Calculates the amount of token2 required for adding to liquidity pool by:
-///
-/// 1 - if liquidity supply is zero then return max_token
-///
-/// 2 - if liquidity supply is not zero then return token1_amount * token2_reserve / token1_reserve + 1
+/// - if liquidity supply is zero then return max_token
+/// - if liquidity supply is not zero then return token1_amount * token2_reserve / token1_reserve + 1
 fn get_token2_amount_required(
     max_token: Uint128,
     token1_amount: Uint128,
@@ -378,6 +378,7 @@ fn get_token2_amount_required(
     }
 }
 
+/// Executes the `AddLiquidity` message.
 pub fn execute_add_liquidity(
     deps: DepsMut,
     info: &MessageInfo,
@@ -586,11 +587,13 @@ fn get_cw1155_transfer_msg(
     token_addr: &Addr,
     tokens: &HashMap<String, Uint128>,
 ) -> Result<CosmosMsg, ContractError> {
-    // create transfer cw1155 msg
+    // Convert HashMap to BTreeMap to maintain deterministic order by key
+    let sorted_tokens: BTreeMap<_, _> = tokens.iter().collect();
+
     let transfer_cw1155_msg = Cw1155ExecuteMsg::BatchSendFrom {
         from: owner.into(),
         to: recipient.into(),
-        batch: tokens
+        batch: sorted_tokens
             .into_iter()
             .map(|(token_id, amount)| (token_id.clone(), amount.clone(), "".to_string()))
             .collect(),
@@ -711,6 +714,7 @@ fn get_cw20_increase_allowance_msg(
     Ok(exec_allowance.into())
 }
 
+/// Executes the `TransferOwnership` message.
 pub fn execute_transfer_ownership(
     deps: DepsMut,
     info: MessageInfo,
@@ -743,6 +747,7 @@ pub fn execute_transfer_ownership(
     Ok(Response::new().add_attributes(attributes))
 }
 
+/// Executes the `ClaimOwnership` message.
 pub fn execute_claim_ownership(
     deps: DepsMut,
     info: MessageInfo,
@@ -766,6 +771,7 @@ pub fn execute_claim_ownership(
     Ok(Response::new().add_attributes(attributes))
 }
 
+/// Executes the `UpdateSlippage` message.
 pub fn execute_update_slippage(
     deps: DepsMut,
     info: MessageInfo,
@@ -787,6 +793,7 @@ pub fn execute_update_slippage(
     ]))
 }
 
+/// Executes the `UpdateFee` message.
 pub fn execute_update_fee(
     deps: DepsMut,
     info: MessageInfo,
@@ -827,6 +834,7 @@ pub fn execute_update_fee(
     ]))
 }
 
+/// Executes the `RemoveLiquidity` message.
 pub fn execute_remove_liquidity(
     deps: DepsMut,
     info: MessageInfo,
@@ -948,12 +956,18 @@ pub fn execute_remove_liquidity(
     ]))
 }
 
-/// Gets a map of 1155 tokens to transfer based on the token1155_amount to transfer by:
+/// Gets a map of 1155 tokens to transfer from TOKEN_SUPPLIES based on the token1155_amount to transfer by:
+/// - if min_token1155 is single then it gets any random tokens from the TOKEN_SUPPLIES till amount is reached
+/// - if min_token1155 is multiple then it:
+///    - tries to get the min amount per token in the min_token1155, if there isn't then throw error
+///    - if the min_token1155 didnt fill the needed token1155_amount, then loop through the min_token1155 ids
+///      and get any remaining tokens left in supply for tokens ids, so to first fill the output tokens
+///      with same token ids user defined in min_token1155
+///    - lastly if ther eis still remaining amount to be filled for transfer, then loop through the
+///      TOKEN_SUPPLIES till get the amount of tokens wanted
 ///
-/// 1 - if min_token1155 is single then it gets any random tokens from the TOKEN_SUPPLIES till amount is reached
-///
-/// 2 - if min_token1155 is multiple then it gets the amount of tokens from the TOKEN_SUPPLIES that matches the multiple
-/// inputs, otherwise it throws and error if the amount of tokens from the TOKEN_SUPPLIES is less than the amount
+/// NOTE: this assumes that token1155_amount is >= to the total of the min_token1155 amount
+/// Please ensure this assumtion is kept by validations before calling this function
 fn get_token_amounts_to_transfer(
     storage: &mut dyn Storage,
     token1155_amount: Uint128,
@@ -964,8 +978,13 @@ fn get_token_amounts_to_transfer(
 
     match min_token1155 {
         TokenAmount::Multiple(amounts) => {
+            // local cache map of tokens that has remaining supply after the min_token1155 is subtracted
             let mut token1155_supplies: HashMap<TokenId, Uint128> = HashMap::new();
 
+            // map over min_token1155 and per token:
+            // - check if the token supply is less than the amount, if so return error
+            // - subtract the amount from the token1155_amount_left_to_transfer
+            // - update the TOKEN_SUPPLIES and token1155_supplies with the remaining supply for the specific token
             for (token_id, token_amount) in amounts.into_iter() {
                 let token_supply = TOKEN_SUPPLIES
                     .may_load(storage, token_id.clone())?
@@ -981,63 +1000,72 @@ fn get_token_amounts_to_transfer(
                 token1155_amount_left_to_transfer -= token_amount;
                 token1155_amounts_to_transfer.insert(token_id.clone(), token_amount);
 
-                let remaining_supply = token_supply - token_amount;
                 update_token_supplies(
                     storage,
-                    remaining_supply,
+                    token_supply - token_amount,
                     token_id,
                     Some(&mut token1155_supplies),
                 )?;
             }
 
-            while !token1155_amount_left_to_transfer.is_zero() && !token1155_supplies.is_empty() {
-                let additional_amount_to_transfer = token1155_amount_left_to_transfer
-                    .checked_div(Uint128::from(token1155_supplies.len() as u32))
-                    .map_err(StdError::divide_by_zero)?;
+            // if there is still has an amount left to transfer, then first loop through the token1155_supplies local
+            // cache map, so that first try and fill remaining amount with same tokens as min_token1155
+            if !token1155_amount_left_to_transfer.is_zero() {
+                let mut sorted_supplies: Vec<(TokenId, Uint128)> = token1155_supplies.into_iter().collect();
+                // Sort by amount (ascending), then by token_id for deterministic order
+                sorted_supplies.sort_by(|a, b| {
+                    if a.1 == b.1 {
+                        a.0.cmp(&b.0)
+                    } else {
+                        a.1.cmp(&b.1)
+                    }
+                });
 
-                for (token_id, token_amount) in token1155_supplies.clone().into_iter() {
+                for (token_id, token_supply) in sorted_supplies.into_iter() {
                     if token1155_amount_left_to_transfer.is_zero() {
                         break;
                     }
 
-                    let mut optional_additional_amount = None;
-                    let mut optional_supplies = None;
-                    if !additional_amount_to_transfer.is_zero() {
-                        optional_additional_amount = Some(additional_amount_to_transfer);
-                        optional_supplies = Some(&mut token1155_supplies);
+                    let take_amount = if token_supply >= token1155_amount_left_to_transfer {
+                        token1155_amount_left_to_transfer
+                    } else {
+                        token_supply
                     };
 
-                    update_token_amounts(
+                    token1155_amount_left_to_transfer -= take_amount;
+                    *token1155_amounts_to_transfer.entry(token_id.clone()).or_insert(Uint128::zero()) += take_amount;
+
+                    update_token_supplies(
                         storage,
-                        &mut token1155_amounts_to_transfer,
-                        &mut token1155_amount_left_to_transfer,
+                        token_supply - take_amount,
                         token_id,
-                        token_amount,
-                        optional_additional_amount,
-                        optional_supplies,
+                        None,
                     )?;
                 }
             }
+
+            // lastly while there is still an amount left to transfer, we run the process_token_supplies_in_chunks to get
+            // the amounts from any tokens in the TOKEN_SUPPLIES that are left to transfer
+            let res = process_token_supplies_in_chunks(
+                storage,
+                &mut token1155_amounts_to_transfer,
+                &mut token1155_amount_left_to_transfer,
+                token1155_amount,
+            );
+            if let Err(err) = res {
+                return Err(err);
+            }
         }
+        // runs the process_token_supplies_in_chunks to get the amounts from any tokens in the TOKEN_SUPPLIES to transfer
         TokenAmount::Single(_) => {
-            let token_supplies = TOKEN_SUPPLIES
-                .range(storage, None, None, Order::Ascending)
-                .collect::<StdResult<Vec<_>>>()?;
-
-            let mut supply_index = 0;
-            while !token1155_amount_left_to_transfer.is_zero() {
-                let (token_id, token_amount) = token_supplies[supply_index].clone();
-
-                update_token_amounts(
-                    storage,
-                    &mut token1155_amounts_to_transfer,
-                    &mut token1155_amount_left_to_transfer,
-                    token_id,
-                    token_amount,
-                    None,
-                    None,
-                )?;
-                supply_index += 1;
+            let res = process_token_supplies_in_chunks(
+                storage,
+                &mut token1155_amounts_to_transfer,
+                &mut token1155_amount_left_to_transfer,
+                token1155_amount,
+            );
+            if let Err(err) = res {
+                return Err(err);
             }
         }
     };
@@ -1045,6 +1073,65 @@ fn get_token_amounts_to_transfer(
     Ok(token1155_amounts_to_transfer.clone())
 }
 
+/// Gets the tokens to transfer by processes the TOKEN_SUPPLIES in chunks of 100 at a time, and updates the
+/// mutable token1155_amounts_to_transfer and mutable token1155_amount_left_to_transfer passed by runnig the
+/// update_token_amounts per token. see update_token_amounts for more details.
+/// Batching of 100 is done to not load the whole TOKEN_SUPPLIES into memory
+fn process_token_supplies_in_chunks(
+    storage: &mut dyn Storage,
+    token1155_amounts_to_transfer: &mut HashMap<TokenId, Uint128>,
+    token1155_amount_left_to_transfer: &mut Uint128,
+    original_token1155_amount: Uint128,
+) -> Result<(), ContractError> {
+    while !token1155_amount_left_to_transfer.is_zero() {
+        let token_supplies = TOKEN_SUPPLIES
+            .range(storage, None, None, Order::Ascending)
+            .take(100) // Process in chunks of 100 entries
+            .collect::<StdResult<Vec<_>>>()?;
+
+        // this should never happen, but just in case
+        if token_supplies.is_empty() {
+            return Err(ContractError::InsufficientTokenSupply {
+                requested: original_token1155_amount,
+                available: original_token1155_amount - *token1155_amount_left_to_transfer,
+            });
+        }
+
+        for (token_id, token_amount) in token_supplies.into_iter() {
+            update_token_amounts(
+                storage,
+                token1155_amounts_to_transfer,
+                token1155_amount_left_to_transfer,
+                token_id.clone(),
+                token_amount,
+                None,
+                None,
+            )?;
+
+            if token1155_amount_left_to_transfer.is_zero() {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Updates the mutable token_amounts_to_transfer and mutable token_amount_left_to_transfer passed by:
+/// - getting the tokens current amount from the token_amounts_to_transfer, aka that is already in map to transfer
+/// - if the passed token amount is less than the wanted amount, we:
+///   - add the tokens remaining amount to the amount to transfer
+///   - make remaining supply zero for the specific token
+///   - subtract the taken amount from mutable token_amount_left_to_transfer for next loop iteration
+/// - if the passed token amount is >= the wanted amount, we:
+///   - add wanted amount to the amount to transfer
+///   - subtract the amount we added from the remaining supply for the specific token
+///   - if additional_token_amount_to_transfer is none, we set mutable token_amount_left_to_transfer to zero since
+///     all the wanted token amount is accounted for then
+///   - if additional_token_amount_to_transfer is some, we subtract the additional token amount to transfer from the mutable
+/// - then it updates the mutable token_amounts_to_transfer with the new amount to transfer
+/// - lastly it updates the TOKEN_SUPPLIES with the remaining supply for the specific token, as well as the mutable
+///   token_supplies if provided, see function update_token_supplies for more details
 fn update_token_amounts(
     storage: &mut dyn Storage,
     token_amounts_to_transfer: &mut HashMap<String, Uint128>,
@@ -1054,16 +1141,23 @@ fn update_token_amounts(
     additional_token_amount_to_transfer: Option<Uint128>,
     token_supplies: Option<&mut HashMap<String, Uint128>>,
 ) -> StdResult<()> {
+    // get the current tokens amount that is already in the token_amounts_to_transfer
     let mut amount_to_transfer = *token_amounts_to_transfer
         .get(&token_id)
         .unwrap_or(&Uint128::zero());
 
+    // token_supply is the amount of tokens that we ideally want to transfer and add to token_amounts_to_transfer
     let mut token_supply = *token_amount_left_to_transfer;
     if let Some(token_amount) = additional_token_amount_to_transfer {
         token_supply = token_amount;
     }
 
     let remaining_supply;
+    // if token amount is >= the amount we want, we:
+    // - add wanted amount to the amount to transfer
+    // - subtract the amount we want from the remaining supply for the specific token
+    // - if additional_token_amount_to_transfer is none, we set mutable token_amount_left_to_transfer to zero since this
+    //   if took the amount needed, otherwise we subtract the additional token amount to transfer from the mutable
     if token_amount >= token_supply {
         amount_to_transfer += token_supply;
         remaining_supply = token_amount - token_supply;
@@ -1074,6 +1168,10 @@ fn update_token_amounts(
             *token_amount_left_to_transfer = Uint128::zero();
         }
     } else {
+      // if token amount is < the amount we want, we:
+      // - add all the tokens remaining amount to the amount to transfer
+      // - make remaining supply zero for the specific token
+      // - subtract the taken amount from mutable token_amount_left_to_transfer for next loop iteration
         amount_to_transfer += token_amount;
         remaining_supply = Uint128::zero();
         *token_amount_left_to_transfer -= token_amount;
@@ -1083,7 +1181,11 @@ fn update_token_amounts(
     update_token_supplies(storage, remaining_supply, token_id.clone(), token_supplies)
 }
 
-/// Updates the TOKEN_SUPPLIES by subtracting the amount of tokens from the total supply and removing the token id if it is zero
+/// Updates the TOKEN_SUPPLIES, and mutable token_supplies(if it is provided) passed by:
+/// - if the remaining supply is zero, we remove the token id from the TOKEN_SUPPLIES and token_supplies
+/// - otherwise we update the supply for the token id in the TOKEN_SUPPLIES and token_supplies
+///
+/// NOTE: the token_supplies is mutable so the passed in token_supplies will be updated if provided
 fn update_token_supplies(
     storage: &mut dyn Storage,
     remaining_supply: Uint128,
@@ -1178,16 +1280,11 @@ fn get_fee_transfer_msg(
 }
 
 /// Calculates the amount of tokens the user bought by:.
-///
-/// 1 - if either reserve is zero throws error
-///
-/// 2 - create fee percent with SCALE_FACTOR and calculate input_amount_with_fee
-///
-/// 3 - calculate numerator: input_amount_with_fee * output_reserve
-///
-/// 4 - calculate denominator: input_reserve * SCALE_FACTOR + input_amount_with_fee
-///
-/// 5 - calculate amount bought: numerator / denominator
+/// - if either reserve is zero throws error
+/// - create fee percent with SCALE_FACTOR and calculate input_amount_with_fee
+/// - calculate numerator: input_amount_with_fee * output_reserve
+/// - calculate denominator: input_reserve * SCALE_FACTOR + input_amount_with_fee
+/// - calculate amount bought: numerator / denominator
 fn get_input_price(
     input_amount: Uint128,
     input_reserve: Uint128,
@@ -1217,12 +1314,11 @@ fn get_input_price(
 }
 
 /// Calculates the amount of tokens the reserves get, aka input amount minus the protocol fees, by:
+/// - if fee amount is none then return input amount
+/// - if fee amount is some then return input amount - fee amount
 ///
-/// 1 - if fee amount is none then return input amount
-///
-/// 2 - if fee amount is some then return input amount - fee amount
 /// For single token input amount, it is input amount - fee amount
-/// For multiple token input amount, it is input amount - fee amount for each token
+/// For multiple token input amount, it is input amount - fee amount if it exists in the fee amount per token
 fn get_amount_without_fee(
     input_amount: &TokenAmount,
     fee_amount: Option<TokenAmount>,
@@ -1232,8 +1328,11 @@ fn get_amount_without_fee(
             TokenAmount::Multiple(mut input_amounts) => {
                 let fee_amounts = fee_amount.get_multiple()?;
 
+                let zero = Uint128::zero();
                 for (token_id, token_amount) in input_amounts.iter_mut() {
-                    let fee_amount = fee_amounts.get(token_id).unwrap();
+                    // it is possible that there are some tokens that is not in the fee_amount, due to the way it is calculated
+                    // refer to get_percent_from_multiple for more details
+                    let fee_amount = fee_amounts.get(token_id).unwrap_or(&zero);
 
                     *token_amount -= fee_amount
                 }
@@ -1251,6 +1350,7 @@ fn get_amount_without_fee(
     }
 }
 
+// Executes the `Swap` message.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap(
     deps: DepsMut,
@@ -1306,6 +1406,8 @@ pub fn execute_swap(
     }
 
     let protocol_fee_amount = input_amount.get_percent(fees.protocol_fee_percent)?;
+    // log protocol_fee_amount
+    println!("protocol_fee_amount: {:?}", protocol_fee_amount);
     let input_amount_without_protocol_fee =
         get_amount_without_fee(&input_amount, protocol_fee_amount.clone())?;
 
@@ -1426,6 +1528,7 @@ pub fn execute_swap(
     Ok(Response::new().add_messages(msgs).add_attributes(attributes))
 }
 
+// Executes the `PassThroughSwap` message.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_pass_through_swap(
     deps: DepsMut,
@@ -1623,6 +1726,7 @@ pub fn execute_pass_through_swap(
     Ok(Response::new().add_messages(msgs).add_attributes(attributes))
 }
 
+// Queries for the contract state.
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
@@ -1643,6 +1747,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
+// Queries for token module token metadata.
 pub fn query_token_metadata(deps: Deps, id: String) -> StdResult<QueryTokenMetadataResponse> {
     deps.querier.query(&QueryRequest::Stargate {
         path: "/ixo.token.v1beta1.Query/TokenMetadata".to_string(),
@@ -1650,6 +1755,7 @@ pub fn query_token_metadata(deps: Deps, id: String) -> StdResult<QueryTokenMetad
     })
 }
 
+// Queries for bank module denom metadata.
 pub fn query_denom_metadata(deps: Deps, denom: String) -> StdResult<QueryDenomMetadataResponse> {
     deps.querier.query(&QueryRequest::Stargate {
         path: "/cosmos.bank.v1beta1.Query/DenomMetadata".to_string(),
@@ -1918,22 +2024,31 @@ mod tests {
     fn should_return_token_amounts_to_transfer_when_multiple_input_token_provided() {
         let mut deps = mock_dependencies();
 
-        let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
-        let mut token_amounts = HashMap::new();
+        // let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
+        // let mut token_amounts = HashMap::new();
         let mut token_supplies = HashMap::new();
 
-        for token_id in token_ids {
-            token_amounts.insert(token_id.clone(), Uint128::new(100));
-            token_supplies.insert(token_id.clone(), Uint128::new(1000));
+        let mut tokens = HashMap::new();
+        tokens.insert("1".to_string(), Uint128::new(500));
+        tokens.insert("2".to_string(), Uint128::new(500));
+        tokens.insert("3".to_string(), Uint128::new(500));
+
+        let mut min_token_amounts = HashMap::new();
+        min_token_amounts.insert("1".to_string(), Uint128::new(100));
+
+        // map through tokens and add to token_supplies
+        for (token_id, token_amount) in tokens.clone().into_iter() {
+            // token_amounts.insert(token_id.clone(), Uint128::new(100));
+            token_supplies.insert(token_id.clone(), token_amount);
             TOKEN_SUPPLIES
-                .save(&mut deps.storage, token_id.clone(), &Uint128::new(1000))
+                .save(&mut deps.storage, token_id.clone(), &token_amount)
                 .unwrap();
         }
 
         let token_amounts_to_transfer = get_token_amounts_to_transfer(
             &mut deps.storage,
-            Uint128::new(500),
-            TokenAmount::Multiple(token_amounts.clone()),
+            Uint128::new(501),
+            TokenAmount::Multiple(min_token_amounts.clone()),
         )
         .unwrap();
 
@@ -1944,12 +2059,12 @@ mod tests {
         );
         assert_eq!(
             TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
-            Uint128::new(500)
+            Uint128::new(501)
         )
     }
 
     #[test]
-    fn should_return_partial_token_amounts_to_transfer_when_multiple_input_token_provided() {
+    fn should_fail_token_amounts_to_transfer_is_less_than_supply() {
         let mut deps = mock_dependencies();
 
         let token_ids = vec!["1".to_string(), "2".to_string(), "3".to_string()];
@@ -1972,17 +2087,15 @@ mod tests {
             Uint128::new(1000),
             TokenAmount::Multiple(token_amounts.clone()),
         )
-        .unwrap();
+        .unwrap_err();
 
-        assert_token_supplies(
-            &mut deps.storage,
-            &token_amounts_to_transfer,
-            &token_supplies,
-        );
         assert_eq!(
-            TokenAmount::Multiple(token_amounts_to_transfer).get_total(),
-            Uint128::new(600)
-        )
+            token_amounts_to_transfer,
+            ContractError::InsufficientTokenSupply {
+                requested: Uint128::new(1_000),
+                available: Uint128::new(600)
+            }
+        );
     }
 
     #[test]

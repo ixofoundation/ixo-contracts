@@ -1,7 +1,7 @@
 use std::{collections::HashMap, convert::TryFrom};
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{CheckedMultiplyFractionError, Decimal, StdError, Uint128};
+use cosmwasm_std::{CheckedMultiplyFractionError, Decimal, Uint128};
 use cw1155::TokenId;
 
 use crate::{
@@ -16,6 +16,8 @@ pub enum TokenAmount {
 }
 
 impl TokenAmount {
+    /// Returns clone of the multiple amount of tokens.
+    /// If the amount is a single amount, returns an error.
     pub fn get_multiple(&self) -> Result<HashMap<TokenId, Uint128>, ContractError> {
         match self {
             TokenAmount::Multiple(amounts) => Ok(amounts.clone()),
@@ -25,6 +27,8 @@ impl TokenAmount {
         }
     }
 
+    /// Returns clone of the single amount of tokens.
+    /// If the amount is a multiple amount, returns an error.
     pub fn get_single(&self) -> Result<Uint128, ContractError> {
         match self {
             TokenAmount::Single(amount) => Ok(amount.clone()),
@@ -34,6 +38,9 @@ impl TokenAmount {
         }
     }
 
+    /// Returns the total amount of tokens.
+    /// - If the amount is a single amount, returns the amount.
+    /// - If the amount is a multiple amount, returns the sum of all amounts.
     pub fn get_total(&self) -> Uint128 {
         match self {
             TokenAmount::Multiple(amounts) => amounts
@@ -46,6 +53,10 @@ impl TokenAmount {
         }
     }
 
+    /// Wrapper function that returns the amount of tokens for the provided percent.
+    /// - If the percent is zero, returns None.
+    /// - If the amount is a single amount, returns the single amount after running get_percent_from_single
+    /// - If the amount is a multiple amount, returns the multiple amount after running get_percent_from_multiple
     pub fn get_percent(&self, percent: Decimal) -> Result<Option<TokenAmount>, ContractError> {
         if percent.is_zero() {
             return Ok(None);
@@ -64,58 +75,58 @@ impl TokenAmount {
         }
     }
 
+    /// Calculates the amount of tokens with the given percent from a multiple amount. Does so by:
+    /// - getting the total percentage amount wanted, and use this as counter to run loop till it is 0
+    /// - sort the input_amounts by amount (ascending), then by id (lexicographical order)
+    /// - run for loop and add the amount of tokens wanted to the amounts HashMap, till percent_amount_left is zero
+    ///
+    /// NOTE: not all the tokens in the input_amounts will be included in the return(fee_amounts), only the ones with the
+    /// lowest amounts tot total the percent needed
     fn get_percent_from_multiple(
         input_amounts: HashMap<String, Uint128>,
         percent: Uint128,
     ) -> Result<TokenAmount, ContractError> {
         let mut amounts: HashMap<TokenId, Uint128> = HashMap::new();
         let input_amounts_total = TokenAmount::Multiple(input_amounts.clone()).get_total();
+
+        // Total percentage amount used as counter for the loop
         let mut percent_amount_left =
             Self::get_percent_from_single(input_amounts_total, percent)?.get_single()?;
 
-        while !percent_amount_left.is_zero() {
-            let percent_amount_per_token = percent_amount_left
-                .checked_div(Uint128::from(input_amounts.len() as u32))
-                .map_err(StdError::divide_by_zero)?;
-
-            for (token_id, token_amount) in input_amounts.clone().into_iter() {
-                if percent_amount_left.is_zero() {
-                    break;
-                }
-
-                let mut taken_percent_amount_per_token =
-                    *amounts.get(&token_id).unwrap_or(&Uint128::zero());
-                if taken_percent_amount_per_token == token_amount {
-                    continue;
-                }
-
-                let token_amount_left = token_amount - taken_percent_amount_per_token;
-                let percent_amount = if percent_amount_per_token.is_zero() {
-                    percent_amount_left
-                } else {
-                    percent_amount_per_token
-                };
-
-                if token_amount_left >= percent_amount {
-                    taken_percent_amount_per_token += percent_amount;
-
-                    if percent_amount_per_token.is_zero() {
-                        percent_amount_left = Uint128::zero();
-                    } else {
-                        percent_amount_left -= percent_amount_per_token;
-                    }
-                } else {
-                    taken_percent_amount_per_token += token_amount_left;
-                    percent_amount_left -= token_amount_left;
-                }
-
-                amounts.insert(token_id, taken_percent_amount_per_token);
+        // Convert HashMap to Vec of tuples for deterministic sorting
+        let mut sorted_input_amounts: Vec<(String, Uint128)> = input_amounts.clone().into_iter().collect();
+        // Sort by amount (ascending), then by id (lexicographical order)
+        sorted_input_amounts.sort_by(|a, b| {
+            if a.1 == b.1 {
+                a.0.cmp(&b.0) // Sort by TokenId if amounts are equal
+            } else {
+                a.1.cmp(&b.1) // Sort by amount (ascending order)
             }
+        });
+
+        for (token_id, token_amount) in sorted_input_amounts.into_iter() {
+            if percent_amount_left.is_zero() {
+                break;
+            }
+
+            // Determine the amount to take from the current token
+            let take_amount = if token_amount >= percent_amount_left {
+                percent_amount_left
+            } else {
+                token_amount
+            };
+
+            // Update the amounts HashMap with the determined take amount
+            amounts.insert(token_id.clone(), take_amount);
+
+            // Reduce the remaining amount to be taken
+            percent_amount_left -= take_amount;
         }
 
         Ok(TokenAmount::Multiple(amounts))
     }
 
+    /// Calculates the amount of tokens with the given percent from a single amount.
     fn get_percent_from_single(
         input_amount: Uint128,
         percent: Uint128,

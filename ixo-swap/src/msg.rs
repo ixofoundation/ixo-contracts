@@ -230,8 +230,8 @@ impl Denom {
 impl TokenSelect {
     pub fn to_string(&self) -> String {
         match self {
-            TokenSelect::Token1155 => "Token1155".to_string(),
-            TokenSelect::Token2 => "Token2".to_string(),
+            TokenSelect::Token1155 => "token1155".to_string(),
+            TokenSelect::Token2 => "token2".to_string(),
         }
     }
 }

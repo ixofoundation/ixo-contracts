@@ -45,6 +45,12 @@ pub enum ContractError {
         available: Uint128,
     },
 
+    #[error("Insufficient token supply error: requested: {requested}, available: {available}")]
+    InsufficientTokenSupply {
+        requested: Uint128,
+        available: Uint128,
+    },
+
     #[error("Min token1155 error: requested: {requested}, available: {available}")]
     MinToken1155Error {
         requested: Uint128,
