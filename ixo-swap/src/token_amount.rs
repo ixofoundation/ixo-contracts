@@ -1,4 +1,4 @@
-use std::{collections::HashMap, convert::TryFrom};
+use std::collections::HashMap;
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{CheckedMultiplyFractionError, Decimal, Uint128};
@@ -6,7 +6,7 @@ use cw1155::TokenId;
 
 use crate::{
     error::ContractError,
-    utils::{decimal_to_uint128, SCALE_FACTOR},
+    utils::{calculate_amount_with_percent, decimal_to_uint128},
 };
 
 #[cw_serde]
@@ -133,16 +133,8 @@ impl TokenAmount {
         input_amount: Uint128,
         percent: Uint128,
     ) -> Result<TokenAmount, CheckedMultiplyFractionError> {
-        if percent.is_zero() || input_amount.is_zero() {
-            return Ok(TokenAmount::Single(Uint128::zero()));
-        }
-
-        let fraction = (SCALE_FACTOR.u128(), 1u128);
-        let result = input_amount
-            .full_mul(percent)
-            .checked_div_ceil(fraction)
-            .map_err(|err| err)?;
-        Ok(TokenAmount::Single(Uint128::try_from(result)?))
+        let result = calculate_amount_with_percent(input_amount, percent)?;
+        Ok(TokenAmount::Single(result))
     }
 }
 
@@ -173,6 +165,17 @@ mod tests {
 
         // 0.01% of 260 = 0.26 so it should be rounded up to 1
         assert_eq!(fee.get_total(), Uint128::new(1))
+    }
+
+    #[test]
+    fn should_return_zero_when_input_is_zero() {
+        let token_amount = TokenAmount::Single(Uint128::new(0));
+        let fee = token_amount
+            .get_percent(Decimal::from_str("0.1").unwrap())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(fee.get_total(), Uint128::new(0))
     }
 
     #[test]

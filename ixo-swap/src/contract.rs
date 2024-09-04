@@ -27,7 +27,7 @@ use crate::state::{
 };
 use crate::token_amount::TokenAmount;
 use crate::utils::{
-    decimal_to_uint128, MIN_FEE_PERCENT, PREDEFINED_MAX_FEES_PERCENT, PREDEFINED_MAX_SLIPPAGE_PERCENT, SCALE_FACTOR
+    calculate_amount_with_percent, decimal_to_uint128, MIN_FEE_PERCENT, PREDEFINED_MAX_FEES_PERCENT, PREDEFINED_MAX_SLIPPAGE_PERCENT, SCALE_FACTOR
 };
 
 // Version info for migration info
@@ -580,12 +580,12 @@ fn validate_slippage(
     min_token_amount: Uint128,
     actual_token_amount: Uint128,
 ) -> Result<(), ContractError> {
-    let max_slippage_percent = MAX_SLIPPAGE_PERCENT.load(deps.storage)?;
+    let max_slippage = MAX_SLIPPAGE_PERCENT.load(deps.storage)?;
+    let max_slippage_percent = decimal_to_uint128(max_slippage)?;
 
-    let actual_token_decimal_amount = Decimal::from_str(actual_token_amount.to_string().as_str())?;
-    let slippage_impact = actual_token_decimal_amount * max_slippage_percent;
-    let min_required_decimal_amount = actual_token_decimal_amount - slippage_impact;
-    let min_required_amount = min_required_decimal_amount.to_uint_floor();
+    let slippage_impact = calculate_amount_with_percent(actual_token_amount, max_slippage_percent)?;
+
+    let min_required_amount = actual_token_amount - slippage_impact;
 
     if min_token_amount < min_required_amount {
         return Err(ContractError::MinTokenAmountError {
@@ -2179,7 +2179,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         MAX_SLIPPAGE_PERCENT
-            .save(&mut deps.storage, &Decimal::from_str("0.1").unwrap())
+            .save(&mut deps.storage, &Decimal::from_str("2").unwrap())
             .unwrap();
 
         let min_token_amount = Uint128::new(95_000);
@@ -2191,7 +2191,7 @@ mod tests {
             err,
             ContractError::MinTokenAmountError {
                 min_token: min_token_amount,
-                min_required: Uint128::new(99_000)
+                min_required: Uint128::new(107_800) // 110_000 * 0.98 (2% slippage) = 107_800
             }
         );
     }
@@ -2204,7 +2204,7 @@ mod tests {
             .save(&mut deps.storage, &Decimal::from_str("0.1").unwrap())
             .unwrap();
 
-        let min_token_amount = Uint128::new(108_000);
+        let min_token_amount = Uint128::new(109_900); // 110_000 * 0.999 (0.1% slippage) = 109_890
         let actual_token_amount = Uint128::new(110_000);
         let res = validate_slippage(&deps.as_mut(), min_token_amount, actual_token_amount).unwrap();
 

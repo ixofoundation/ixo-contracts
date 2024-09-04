@@ -775,7 +775,7 @@ fn cw1155_to_cw20_swap() {
 
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
-    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
+    let max_slippage_percent = Decimal::from_str("8").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
@@ -899,7 +899,6 @@ fn cw1155_to_cw20_swap() {
     let res = router
         .execute_contract(owner.clone(), amm.clone(), &swap_msg, &[])
         .unwrap();
-    println!("res: {:?}", res);
     let event = Event::new("wasm").add_attributes(vec![
         attr("action", "swap"),
         attr("sender", owner.clone()),
@@ -938,8 +937,8 @@ fn cw1155_to_cw20_swap() {
         input_token: TokenSelect::Token2,
         input_amount: TokenAmount::Single(Uint128::new(60_000)),
         min_output: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(30_000)),
-            (token_ids[1].clone(), Uint128::new(30_000)),
+            (token_ids[0].clone(), Uint128::new(33_000)),
+            (token_ids[1].clone(), Uint128::new(33_000)),
         ])),
         expiration: None,
     };
@@ -950,7 +949,7 @@ fn cw1155_to_cw20_swap() {
     // ensure balances updated
     let owner_balance =
         batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids).balances;
-    assert_eq!(owner_balance, [Uint128::new(65_878), Uint128::new(55_000)]);
+    assert_eq!(owner_balance, [Uint128::new(62_878), Uint128::new(58_000)]);
     let owner_balance = cw20_token.balance(&router.wrap(), owner.clone()).unwrap();
     assert_eq!(owner_balance, Uint128::new(23_266));
     let fee_recipient_balance = cw20_token
@@ -984,7 +983,7 @@ fn cw1155_to_native_swap() {
     let cw1155_token = create_cw1155(&mut router, &owner);
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
-    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
+    let max_slippage_percent = Decimal::from_str("8").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.2").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.1").unwrap();
@@ -1087,8 +1086,8 @@ fn cw1155_to_native_swap() {
         input_token: TokenSelect::Token2,
         input_amount: TokenAmount::Single(Uint128::new(60_000)),
         min_output: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(30_000)),
-            (token_ids[1].clone(), Uint128::new(30_000)),
+            (token_ids[0].clone(), Uint128::new(34_000)),
+            (token_ids[1].clone(), Uint128::new(34_000)),
         ])),
         expiration: None,
     };
@@ -1107,7 +1106,7 @@ fn cw1155_to_native_swap() {
     // ensure balances updated
     let owner_balance =
         batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids).balances;
-    assert_eq!(owner_balance, [Uint128::new(65_878), Uint128::new(55_000)]);
+    assert_eq!(owner_balance, [Uint128::new(61_878), Uint128::new(59_000)]);
     let owner_balance: Coin = bank_balance(&mut router, &owner, NATIVE_TOKEN_DENOM.to_string());
     assert_eq!(owner_balance.amount, Uint128::new(23_266));
     let fee_recipient_balance = bank_balance(
@@ -1143,7 +1142,7 @@ fn cw1155_to_native_swap_low_fees() {
     let cw1155_token = create_cw1155(&mut router, &owner);
     let token_ids = vec![TokenId::from("FIRST/1"), TokenId::from("FIRST/2")];
 
-    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
+    let max_slippage_percent = Decimal::from_str("8").unwrap();
 
     let lp_fee_percent = Decimal::from_str("0.0").unwrap();
     let protocol_fee_percent = Decimal::from_str("0.01").unwrap();
@@ -1223,7 +1222,7 @@ fn cw1155_to_native_swap_low_fees() {
             (token_ids[0].clone(), Uint128::new(5_000)),
             (token_ids[1].clone(), Uint128::new(5_000)),
         ])),
-        min_output: TokenAmount::Single(Uint128::new(6_500)),
+        min_output: TokenAmount::Single(Uint128::new(8_362)),
         expiration: None,
     };
     let _res = router
@@ -1247,8 +1246,8 @@ fn cw1155_to_native_swap_low_fees() {
         input_token: TokenSelect::Token2,
         input_amount: TokenAmount::Single(Uint128::new(7_000)),
         min_output: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(3_000)),
-            (token_ids[1].clone(), Uint128::new(3_000)),
+            (token_ids[0].clone(), Uint128::new(3_700)),
+            (token_ids[1].clone(), Uint128::new(3_700)),
         ])),
         expiration: None,
     };
@@ -1267,7 +1266,7 @@ fn cw1155_to_native_swap_low_fees() {
     // ensure balances updated
     let owner_balance =
         batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids).balances;
-    assert_eq!(owner_balance, [Uint128::new(49_863), Uint128::new(48_000)]);
+    assert_eq!(owner_balance, [Uint128::new(49_163), Uint128::new(48_700)]);
     let owner_balance: Coin = bank_balance(&mut router, &owner, NATIVE_TOKEN_DENOM.to_string());
     assert_eq!(owner_balance.amount, Uint128::new(52_090));
     let fee_recipient_balance = bank_balance(
@@ -1336,7 +1335,7 @@ fn amm_add_and_remove_liquidity() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
+    let max_slippage_percent = Decimal::from_str("1").unwrap();
 
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
@@ -1718,7 +1717,7 @@ fn amm_add_and_remove_liquidity() {
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
         amount: Uint128::new(50),
         min_token1155: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(35)),
+            (token_ids[0].clone(), Uint128::new(45)),
             (token_ids[1].clone(), Uint128::new(5)),
         ])),
         min_token2: Uint128::new(50),
@@ -1741,12 +1740,12 @@ fn amm_add_and_remove_liquidity() {
     // ensure balances updated
     let owner_balance =
         batch_balance_for_owner(&router, &cw1155_token, &owner, &token_ids).balances;
-    assert_eq!(owner_balance, [Uint128::new(4915), Uint128::new(4985)]);
+    assert_eq!(owner_balance, [Uint128::new(4925), Uint128::new(4975)]);
     let token_supplies = get_owner_lp_tokens_balance(&router, &amm_addr, &token_ids).supplies;
-    assert_eq!(token_supplies, [Uint128::new(85), Uint128::new(15)]);
+    assert_eq!(token_supplies, [Uint128::new(75), Uint128::new(25)]);
     let amm_balances =
         batch_balance_for_owner(&router, &cw1155_token, &amm_addr, &token_ids).balances;
-    assert_eq!(amm_balances, [Uint128::new(85), Uint128::new(15)]);
+    assert_eq!(amm_balances, [Uint128::new(75), Uint128::new(25)]);
     let crust_balance = lp_token.balance(&router.wrap(), owner.clone()).unwrap();
     assert_eq!(crust_balance, Uint128::new(100));
 
@@ -1763,8 +1762,8 @@ fn amm_add_and_remove_liquidity() {
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
         amount: Uint128::new(100),
         min_token1155: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(85)),
-            (token_ids[1].clone(), Uint128::new(15)),
+            (token_ids[0].clone(), Uint128::new(75)),
+            (token_ids[1].clone(), Uint128::new(25)),
         ])),
         min_token2: Uint128::new(100),
         expiration: None,
@@ -1803,7 +1802,7 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let cw1155_token = create_cw1155(&mut router, &owner);
 
-    let max_slippage_percent = Decimal::from_str("0.3").unwrap();
+    let max_slippage_percent = Decimal::from_str("5").unwrap();
 
     let supported_denom = "CARBON".to_string();
     let token_ids = vec![
@@ -1938,8 +1937,9 @@ fn remove_liquidity_with_partially_and_any_filling() {
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
         amount: Uint128::new(80),
         min_token1155: TokenAmount::Multiple(HashMap::from([
-            (token_ids[0].clone(), Uint128::new(40)),
+            (token_ids[0].clone(), Uint128::new(41)),
             (token_ids[1].clone(), Uint128::new(30)),
+            (token_ids[2].clone(), Uint128::new(5)),
         ])),
         min_token2: Uint128::new(80),
         expiration: None,
@@ -1996,8 +1996,8 @@ fn remove_liquidity_with_partially_and_any_filling() {
 
     let remove_liquidity_msg = ExecuteMsg::RemoveLiquidity {
         amount: Uint128::new(55),
-        min_token1155: TokenAmount::Single(Uint128::new(40)),
-        min_token2: Uint128::new(40),
+        min_token1155: TokenAmount::Single(Uint128::new(52)),
+        min_token2: Uint128::new(52),
         expiration: None,
     };
     let _res = router
