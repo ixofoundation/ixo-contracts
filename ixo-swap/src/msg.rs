@@ -216,3 +216,22 @@ pub struct QueryDenomMetadataResponse {
     #[prost(message, optional, tag = "1")]
     pub metadata: ::core::option::Option<Metadata>,
 }
+
+impl Denom {
+    pub fn to_string(&self) -> String {
+        match self {
+            Denom::Native(native_denom) => format!("Native:{}", native_denom),
+            Denom::Cw20(addr) => format!("Cw20:{}", addr),
+            Denom::Cw1155(addr, id) => format!("Cw1155:{}:{}", addr, id),
+        }
+    }
+}
+
+impl TokenSelect {
+    pub fn to_string(&self) -> String {
+        match self {
+            TokenSelect::Token1155 => "token1155".to_string(),
+            TokenSelect::Token2 => "token2".to_string(),
+        }
+    }
+}

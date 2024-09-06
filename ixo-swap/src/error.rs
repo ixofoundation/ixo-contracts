@@ -30,6 +30,12 @@ pub enum ContractError {
         tokens_required: Uint128,
     },
 
+    #[error("Min input token amount error: input_token_amount: {input_token_amount}, min_allowed {min_allowed}")]
+    MinInputTokenAmountError {
+        input_token_amount: Uint128,
+        min_allowed: Uint128,
+    },
+
     #[error("Min token amount error: requested: {min_token}, min_required {min_required}")]
     MinTokenAmountError {
         min_token: Uint128,
@@ -41,6 +47,12 @@ pub enum ContractError {
 
     #[error("Insufficient liquidity error: requested: {requested}, available: {available}")]
     InsufficientLiquidityError {
+        requested: Uint128,
+        available: Uint128,
+    },
+
+    #[error("Insufficient token supply error: requested: {requested}, available: {available}")]
+    InsufficientTokenSupply {
         requested: Uint128,
         available: Uint128,
     },
@@ -67,6 +79,12 @@ pub enum ContractError {
     FeesTooHigh {
         max_fee_percent: Decimal,
         total_fee_percent: Decimal,
+    },
+
+    #[error("Fee ({fee_percent}) percent is lower than allowed min ({min_fee_percent})")]
+    FeesTooLow {
+        min_fee_percent: Decimal,
+        fee_percent: Decimal,
     },
 
     #[error("InsufficientFunds")]
